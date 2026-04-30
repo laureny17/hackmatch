@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HackMatch</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.32/dist/vue.esm-browser.js",
+        "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@1.2.0/dist/browser/index.js",
+        "@graffiti-garden/implementation-decentralized": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-decentralized@0.0.9/dist/browser/index.js",
+        "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@1.2.2/dist/browser/plugin.mjs"
+      }
+    }
+  </script>
+  <script>
+    window.addEventListener("error", (event) => {
+      const app = document.getElementById("app");
+      if (!app || app.textContent.trim() !== "Loading...") return;
+      app.innerHTML = "<pre style='white-space:pre-wrap;padding:20px;font:14px monospace;color:#991b1b'>Startup error: " +
+        String(event.message || event.error || "unknown error") +
+        "</pre>";
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      const app = document.getElementById("app");
+      if (!app || app.textContent.trim() !== "Loading...") return;
+      app.innerHTML = "<pre style='white-space:pre-wrap;padding:20px;font:14px monospace;color:#991b1b'>Startup error: " +
+        String(event.reason?.message || event.reason || "unknown error") +
+        "</pre>";
+    });
+  </script>
+  <script src="index.js?v=20260429-15" type="module"></script>
+  <link rel="stylesheet" href="style.css?v=20260429-15" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">Loading...</div>
+</body>
+</html>
