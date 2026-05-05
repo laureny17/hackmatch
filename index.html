@@ -17,14 +17,14 @@
   <script>
     window.addEventListener("error", (event) => {
       const app = document.getElementById("app");
-      if (!app || app.textContent.trim() !== "Loading...") return;
+      if (!app || app.dataset.loading !== "true") return;
       app.innerHTML = "<pre style='white-space:pre-wrap;padding:20px;font:14px monospace;color:#991b1b'>Startup error: " +
         String(event.message || event.error || "unknown error") +
         "</pre>";
     });
     window.addEventListener("unhandledrejection", (event) => {
       const app = document.getElementById("app");
-      if (!app || app.textContent.trim() !== "Loading...") return;
+      if (!app || app.dataset.loading !== "true") return;
       app.innerHTML = "<pre style='white-space:pre-wrap;padding:20px;font:14px monospace;color:#991b1b'>Startup error: " +
         String(event.reason?.message || event.reason || "unknown error") +
         "</pre>";
@@ -35,6 +35,27 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div id="app">Loading...</div>
+  <div id="app" data-loading="true">
+    <div style="
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      background: #f5f3ff;
+    ">
+      <div style="
+        width: 40px;
+        height: 40px;
+        border: 3px solid #ede9fe;
+        border-top-color: #7c3aed;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      "></div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    </div>
+  </div>
 </body>
 </html>

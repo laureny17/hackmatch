@@ -1565,7 +1565,7 @@ export default {
           </div>
 
           <div v-else-if="convsLoading && !displayedConversations.length" class="empty-state">
-            <div class="empty-icon">⏳</div>
+            <div class="spinner"></div>
             <div class="empty-text">Loading...</div>
           </div>
 

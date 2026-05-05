@@ -965,6 +965,9 @@ export default {
             <div class="wizard-progress-bar" :style="{ width: (wizardStep === 0 ? 0 : wizardStep / 8 * 100) + '%' }"></div>
           </div>
 
+          <!-- Step content (keyed so slide animation fires on each step change) -->
+          <div :key="wizardStep" class="wizard-step-anim">
+
           <!-- Step 0: Welcome -->
           <div v-if="wizardStep === 0" class="wizard-step wizard-welcome">
             <div class="wizard-welcome-emoji">✨</div>
@@ -1084,6 +1087,8 @@ export default {
             </div>
           </div>
 
+          </div> <!-- end wizard-step-anim -->
+
           <!-- Wizard navigation -->
           <div v-if="wizardStep >= 1" class="wizard-nav">
             <div v-if="errorMsg" class="profile-msg err" style="margin-bottom:8px">⚠️ {{ errorMsg }}</div>
@@ -1101,7 +1106,10 @@ export default {
                 class="btn btn-primary"
                 :disabled="isSaving"
                 @click="saveProfile"
-              >{{ isSaving ? 'Saving...' : 'Create Profile ✓' }}</button>
+              >
+                <span v-if="isSaving" class="btn-spinner"></span>
+                <span>{{ isSaving ? 'Saving...' : 'Create Profile ✓' }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1404,7 +1412,8 @@ export default {
             :disabled="isSaving"
             @click="saveProfile"
           >
-            {{ isSaving ? 'Saving...' : ((myProfile || form.firstName) ? 'Update Profile ✓' : 'Save Profile ✓') }}
+            <span v-if="isSaving" class="btn-spinner"></span>
+            <span>{{ isSaving ? 'Saving...' : ((myProfile || form.firstName) ? 'Update Profile ✓' : 'Save Profile ✓') }}</span>
           </button>
         </div>
         <div v-if="errorMsg"   class="profile-msg err" style="margin-top:10px">⚠️ {{ errorMsg }}</div>

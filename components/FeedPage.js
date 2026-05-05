@@ -574,7 +574,7 @@ export default {
 
         <!-- Loading (only shown on very first ever visit before cache is built) -->
         <div v-else-if="isLoading && !filteredProfiles.length" class="empty-state">
-          <div class="empty-icon">⏳</div>
+          <div class="spinner"></div>
           <div class="empty-text">Loading profiles...</div>
         </div>
 
