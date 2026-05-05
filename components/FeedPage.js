@@ -365,10 +365,12 @@ export default {
       );
     }
 
-    async function sendFeedMessage(actorId, message) {
+    async function sendFeedMessage(actorId, message, excludedTeammates = new Set()) {
       if (!session.value || !actorId || !message?.content?.trim()) return;
       const mine = session.value.actor;
-      const participants = currentParticipantsWith(actorId);
+      const allTeammates = myProfile.value?.value.confirmedTeammates ?? [];
+      const filteredTeammates = allTeammates.filter(id => !excludedTeammates.has(id));
+      const participants = conversationParticipants(mine, actorId, filteredTeammates);
       const pairKey = conversationPairKey(mine, actorId);
       const participantKey = conversationParticipantKey(participants);
       const channel = crypto.randomUUID();
@@ -427,6 +429,7 @@ export default {
     function openReply({ profile, questionIdx }) {
       replyModal.value = { profile, questionIdx };
       replyText.value = "";
+      msgExcluded.value = new Set();
     }
     function closeReply() {
       replyModal.value = null;
@@ -444,7 +447,7 @@ export default {
           ...(questionText && answerText
             ? { inReplyTo: { questionText, answerText } }
             : {}),
-        });
+        }, msgExcluded.value);
         closeReply();
       } catch (err) {
         window.alert("Message failed: " + (err?.message ?? err));
@@ -454,13 +457,21 @@ export default {
     // ── Message modal ─────────────────────────────────────────────────
     const msgModal = ref(null); // profile object
     const msgText = ref("");
+    const msgExcluded = ref(new Set()); // actor IDs to exclude from this conversation
 
     function openMsg(profile) {
       msgModal.value = profile;
       msgText.value = "";
+      msgExcluded.value = new Set();
     }
     function closeMsg() {
       msgModal.value = null;
+    }
+    function toggleMsgExclude(actorId) {
+      const next = new Set(msgExcluded.value);
+      if (next.has(actorId)) next.delete(actorId);
+      else next.add(actorId);
+      msgExcluded.value = next;
     }
     function handleMessage(profile) {
       if (hasConversation(profile.actor))
@@ -472,16 +483,24 @@ export default {
       try {
         await sendFeedMessage(msgModal.value.actor, {
           content: msgText.value.trim(),
-        });
+        }, msgExcluded.value);
         closeMsg();
       } catch (err) {
         window.alert("Message failed: " + (err?.message ?? err));
       }
     }
 
+    const profileByActor = computed(() => {
+      const map = new Map();
+      for (const p of profileObjects.value) map.set(p.actor, p);
+      return map;
+    });
+
     return {
       session,
       isLoading,
+      myProfile,
+      profileByActor,
       filteredProfiles,
       searchQuery,
       filters,
@@ -506,8 +525,10 @@ export default {
       sendReply,
       msgModal,
       msgText,
+      msgExcluded,
       openMsg,
       closeMsg,
+      toggleMsgExclude,
       handleMessage,
       sendMsg,
       hasConversation,
@@ -614,6 +635,43 @@ export default {
             </div>
             "{{ replyModal.profile.value.answers?.['q' + (replyModal.questionIdx + 1)] }}"
           </div>
+
+          <!-- Teammate visibility -->
+          <template v-if="(myProfile?.value.confirmedTeammates?.length ?? 0) > 0">
+            <div class="team-note" style="margin:10px 0 8px">
+              Your confirmed teammates will be added to this conversation. Click ✕ to exclude.
+            </div>
+            <div class="teammate-list" style="margin-bottom:10px">
+              <div
+                v-for="id in (myProfile.value.confirmedTeammates ?? [])"
+                :key="id"
+                class="teammate-row"
+                :style="msgExcluded.has(id) ? 'opacity:0.4' : ''"
+              >
+                <div
+                  class="teammate-avatar"
+                  :style="profileByActor.get(id)?.value.avatar
+                    ? { backgroundImage: 'url(' + profileByActor.get(id).value.avatar + ')', backgroundSize: 'cover', backgroundPosition: 'center' }
+                    : { background: 'var(--primary-light)', color: 'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:'13px' }"
+                >
+                  <span v-if="!profileByActor.get(id)?.value.avatar">
+                    {{ (profileByActor.get(id)?.value.name?.first?.[0] ?? '?') + (profileByActor.get(id)?.value.name?.last?.[0] ?? '') }}
+                  </span>
+                </div>
+                <div class="teammate-info">
+                  <div class="teammate-name">
+                    {{ profileByActor.get(id)?.value.name?.first ?? 'Unknown' }}
+                    {{ profileByActor.get(id)?.value.name?.last ?? '' }}
+                  </div>
+                  <div class="teammate-meta">{{ msgExcluded.has(id) ? 'Excluded' : 'Will be included' }}</div>
+                </div>
+                <button class="teammate-remove" @click="toggleMsgExclude(id)" :title="msgExcluded.has(id) ? 'Re-include' : 'Exclude from this conversation'">
+                  {{ msgExcluded.has(id) ? '+' : '✕' }}
+                </button>
+              </div>
+            </div>
+          </template>
+
           <textarea
             class="reply-ta"
             v-model="replyText"
@@ -640,6 +698,43 @@ export default {
             </div>
             <button class="modal-close" @click="closeMsg">✕</button>
           </div>
+
+          <!-- Teammate visibility: who will be included -->
+          <template v-if="(myProfile?.value.confirmedTeammates?.length ?? 0) > 0">
+            <div class="team-note" style="margin:0 0 8px">
+              Your confirmed teammates will be added to this conversation. Click ✕ to exclude.
+            </div>
+            <div class="teammate-list" style="margin-bottom:10px">
+              <div
+                v-for="id in (myProfile.value.confirmedTeammates ?? [])"
+                :key="id"
+                class="teammate-row"
+                :style="msgExcluded.has(id) ? 'opacity:0.4' : ''"
+              >
+                <div
+                  class="teammate-avatar"
+                  :style="profileByActor.get(id)?.value.avatar
+                    ? { backgroundImage: 'url(' + profileByActor.get(id).value.avatar + ')', backgroundSize: 'cover', backgroundPosition: 'center' }
+                    : { background: 'var(--primary-light)', color: 'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:'13px' }"
+                >
+                  <span v-if="!profileByActor.get(id)?.value.avatar">
+                    {{ (profileByActor.get(id)?.value.name?.first?.[0] ?? '?') + (profileByActor.get(id)?.value.name?.last?.[0] ?? '') }}
+                  </span>
+                </div>
+                <div class="teammate-info">
+                  <div class="teammate-name">
+                    {{ profileByActor.get(id)?.value.name?.first ?? 'Unknown' }}
+                    {{ profileByActor.get(id)?.value.name?.last ?? '' }}
+                  </div>
+                  <div class="teammate-meta">{{ msgExcluded.has(id) ? 'Excluded' : 'Will be included' }}</div>
+                </div>
+                <button class="teammate-remove" @click="toggleMsgExclude(id)" :title="msgExcluded.has(id) ? 'Re-include' : 'Exclude from this conversation'">
+                  {{ msgExcluded.has(id) ? '+' : '✕' }}
+                </button>
+              </div>
+            </div>
+          </template>
+
           <textarea
             class="reply-ta"
             v-model="msgText"

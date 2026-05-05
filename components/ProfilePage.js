@@ -119,7 +119,9 @@ export default {
 
       const newTeammateSet = new Set([...myTeammates, ...toAdd]);
       if (1 + newTeammateSet.size > 4) {
-        inviteError.value = `Can't accept — this would create a team of ${1 + newTeammateSet.size} (max 4).`;
+        const myTeamSize = 1 + myTeammates.length;
+        const theirTeamSize = toAdd.length;
+        inviteError.value = `Can't accept — you have a team of ${myTeamSize} and they have a team of ${theirTeamSize}. Together that would be ${1 + newTeammateSet.size} people (max is 4).`;
         return;
       }
       inviteError.value = "";

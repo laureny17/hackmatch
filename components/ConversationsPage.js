@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import {
   useGraffiti,
   useGraffitiSession,
@@ -9,6 +9,8 @@ import {
   PROFILE_SCHEMA,
   CONVERSATION_SCHEMA,
   MESSAGE_SCHEMA,
+  TEAM_INVITE_SCHEMA,
+  TEAM_DECLINE_SCHEMA,
   avatarGradient,
   initials,
   formatTimestamp,
@@ -105,6 +107,22 @@ export default {
         session, // need session to see private allowed objects
         true,
       );
+
+    // ── Discover teammate invites/declines ────────────────────────────
+    const { objects: inviteObjects } = useGraffitiDiscover(
+      () => (myActor.value ? [myActor.value] : []),
+      TEAM_INVITE_SCHEMA,
+      session,
+      true,
+    );
+    const { objects: convDeclineObjects } = useGraffitiDiscover(
+      () => (myActor.value ? [myActor.value] : []),
+      TEAM_DECLINE_SCHEMA,
+      session,
+      true,
+    );
+    // Suppress unused-variable lint for convDeclineObjects (used for future auto-remove)
+    void convDeclineObjects;
 
     function convPairKey(conv) {
       const participants = conv.value.participants ?? [];
@@ -637,6 +655,23 @@ export default {
       ),
     );
 
+    // Auto-scroll: always jump to bottom when switching conversations;
+    // on new messages only scroll if the user is already near the bottom.
+    const msgBody = ref(null);
+    watch(selectedChannel, () => {
+      nextTick(() => {
+        if (msgBody.value) msgBody.value.scrollTop = msgBody.value.scrollHeight;
+      });
+    });
+    watch(sortedMessages, () => {
+      nextTick(() => {
+        const el = msgBody.value;
+        if (!el) return;
+        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+        if (nearBottom) el.scrollTop = el.scrollHeight;
+      });
+    });
+
     // Unread tracking (localStorage: { [channel]: lastReadTimestamp })
     function getLastRead() {
       try {
@@ -778,6 +813,98 @@ export default {
       if (v.status === "yellow") return "Deciding on teammates";
       return "Team is full";
     }
+
+    // ── Teammate invite management (mirrors ProfilePage logic) ────────
+    function getDeclinedInvites() {
+      try { return new Set(JSON.parse(localStorage.getItem('hm_declined_invites') || '[]')); }
+      catch { return new Set(); }
+    }
+    const declinedInvites = ref(getDeclinedInvites());
+    function saveDeclinedInvites() {
+      localStorage.setItem('hm_declined_invites', JSON.stringify([...declinedInvites.value]));
+    }
+
+    const pendingInvites = computed(() => {
+      if (!myActor.value) return [];
+      const myTeammateSet = new Set(myProfile.value?.value.confirmedTeammates ?? []);
+      const byFrom = new Map();
+      for (const inv of inviteObjects.value) {
+        if (inv.value.to !== myActor.value) continue;
+        if (myTeammateSet.has(inv.value.from)) continue;
+        const invKey = inv.url ?? `${inv.value.from}:${inv.value.published}`;
+        if (declinedInvites.value.has(invKey)) continue;
+        const existing = byFrom.get(inv.value.from);
+        if (!existing || inv.value.published > existing.value.published)
+          byFrom.set(inv.value.from, inv);
+      }
+      return [...byFrom.values()].toSorted((a, b) => b.value.published - a.value.published);
+    });
+
+    const isAcceptingInvite = ref(false);
+    const convInviteError = ref("");
+
+    async function acceptInviteInConv(invite) {
+      if (!myActor.value || !myProfile.value || !session.value) return;
+      const myTeammates = myProfile.value.value.confirmedTeammates ?? [];
+      const personA = invite.value.from;
+      const personAProfile = profileByActor.value.get(personA);
+      const personAConfirmed = personAProfile?.value.confirmedTeammates ?? [];
+      const personAMutuals = personAConfirmed.filter(id => {
+        const their = profileByActor.value.get(id);
+        return (their?.value.confirmedTeammates ?? []).includes(personA);
+      });
+      const toAdd = [personA, ...personAMutuals];
+      const newTeammateSet = new Set([...myTeammates, ...toAdd]);
+      const myTeamSize = 1 + myTeammates.length;
+      const theirTeamSize = toAdd.length;
+      if (1 + newTeammateSet.size > 4) {
+        convInviteError.value = `Can't accept — you have a team of ${myTeamSize} and they have a team of ${theirTeamSize}. Together that would be ${1 + newTeammateSet.size} people (max is 4).`;
+        return;
+      }
+      convInviteError.value = "";
+      isAcceptingInvite.value = true;
+      const newTeammates = [...newTeammateSet].slice(0, 3);
+      try {
+        const v = myProfile.value.value;
+        await graffiti.delete(myProfile.value, session.value);
+        await graffiti.post(
+          { value: { ...v, confirmedTeammates: newTeammates, published: Date.now() }, channels: [HACKMATCH_CHANNEL] },
+          session.value,
+        );
+        const invKey = invite.url ?? `${invite.value.from}:${invite.value.published}`;
+        declinedInvites.value.add(invKey);
+        saveDeclinedInvites();
+        declinedInvites.value = new Set(declinedInvites.value);
+      } catch (err) {
+        convInviteError.value = "Accept failed: " + (err?.message ?? err);
+      } finally {
+        isAcceptingInvite.value = false;
+      }
+    }
+
+    async function declineInviteInConv(invite) {
+      const invKey = invite.url ?? `${invite.value.from}:${invite.value.published}`;
+      declinedInvites.value.add(invKey);
+      saveDeclinedInvites();
+      declinedInvites.value = new Set(declinedInvites.value);
+      if (myActor.value) {
+        try {
+          await graffiti.post({
+            value: { activity: 'TeamDecline', from: myActor.value, to: invite.value.from, published: Date.now() },
+            channels: [invite.value.from],
+            allowed: [myActor.value, invite.value.from],
+          }, session.value);
+        } catch { /* non-critical */ }
+      }
+    }
+
+    // ── Group members modal ───────────────────────────────────────────
+    const showMembersModal = ref(false);
+
+    // ── Image lightbox (prevents auto-download on click) ─────────────
+    const lightboxImg = ref(null); // { src, name } | null
+    function openLightbox(src, name) { lightboxImg.value = { src, name }; }
+    function closeLightbox() { lightboxImg.value = null; }
 
     // ── Start / find a conversation ───────────────────────────────────
     const isCreatingConv = ref(false);
@@ -1255,7 +1382,9 @@ export default {
       // Constraint: union of both teams ≤ 4
       const resultingTeam = new Set([myActor.value, ...teamDraft.value, profile.actor, ...theirTeammates]);
       if (resultingTeam.size > 4) {
-        teamError.value = `Can't add: this would make a team of ${resultingTeam.size} people (max 4).`;
+        const myTeamSize = 1 + teamDraft.value.length;
+        const theirTeamSize = 1 + theirTeammates.length;
+        teamError.value = `Can't add — you have a team of ${myTeamSize} and they have a team of ${theirTeamSize}. Together that would be ${resultingTeam.size} people (max is 4).`;
         return;
       }
       const candidates = [...new Set([profile.actor, ...theirTeammates])].filter(
@@ -1396,10 +1525,16 @@ export default {
           return tsB - tsA;
         })
     );
-    // Show cached list while loading, live list once settled
-    const displayedConversations = computed(() =>
-      convsLoading.value ? cachedConvObjects.value : visibleConversations.value
-    );
+    // Favorites-only filter for conversation list
+    const showFavoritesOnly = ref(false);
+
+    // Show cached list while loading, live list once settled; optionally filter to starred
+    const displayedConversations = computed(() => {
+      const base = convsLoading.value ? cachedConvObjects.value : visibleConversations.value;
+      return showFavoritesOnly.value
+        ? base.filter(c => favorited.value.has(c.value.channel))
+        : base;
+    });
 
     // Mobile: toggle sidebar vs message view
     const mobileShowMessages = ref(false);
@@ -1494,6 +1629,17 @@ export default {
       closeAddTeammateModal,
       addConfirmedTeammateToConversation,
       mobileShowMessages,
+      showFavoritesOnly,
+      showMembersModal,
+      pendingInvites,
+      isAcceptingInvite,
+      convInviteError,
+      acceptInviteInConv,
+      declineInviteInConv,
+      msgBody,
+      lightboxImg,
+      openLightbox,
+      closeLightbox,
     };
   },
 
@@ -1513,7 +1659,7 @@ export default {
             <div class="status-sel-wrap">
               <div class="status-sel-btn" @click="statusDropdownOpen = !statusDropdownOpen">
                 <span class="sdot" :class="myProfile?.value.status ?? 'green'"></span>
-                <span>{{ {green:'Looking',yellow:'Deciding',red:'Full'}[myProfile?.value.status ?? 'green'] }}</span>
+                <span>Set Status</span>
                 <span>▾</span>
               </div>
               <div class="status-dd" :class="{ open: statusDropdownOpen }">
@@ -1544,14 +1690,19 @@ export default {
               class="btn-arch"
               @click="openTeamModal"
             >
-              👥 Team
+              👥 Manage Team
             </button>
             <button
               class="btn-arch"
+              :class="{ on: showFavoritesOnly }"
+              @click="showFavoritesOnly = !showFavoritesOnly; showArchived = false"
+            >⭐ Starred Conversations</button>
+            <button
+              class="btn-arch"
               :class="{ on: showArchived }"
-              @click="showArchived = !showArchived"
+              @click="showArchived = !showArchived; showFavoritesOnly = false"
             >
-              {{ showArchived ? '← Active' : '📦 Archived' }}
+              {{ showArchived ? '← Active' : '📦 Archived Conversations' }}
               <span v-if="!showArchived && archivedUnreadTotal > 0" class="archive-unread">{{ archivedUnreadTotal }}</span>
             </button>
           </div>
@@ -1570,9 +1721,10 @@ export default {
           </div>
 
           <div v-else-if="!displayedConversations.length" class="empty-state">
-            <div class="empty-icon">{{ showArchived ? '📦' : '💬' }}</div>
-            <div class="empty-text">{{ showArchived ? 'No archived conversations' : 'No conversations yet' }}</div>
-            <div v-if="!showArchived" class="empty-sub">Message someone from the Feed!</div>
+            <div class="empty-icon">{{ showArchived ? '📦' : showFavoritesOnly ? '⭐' : '💬' }}</div>
+            <div class="empty-text">{{ showArchived ? 'No archived conversations' : showFavoritesOnly ? 'No starred conversations' : 'No conversations yet' }}</div>
+            <div v-if="showFavoritesOnly" class="empty-sub">Star a conversation using the ⋯ menu</div>
+            <div v-else-if="!showArchived" class="empty-sub">Message someone from the Feed!</div>
           </div>
 
           <div
@@ -1652,7 +1804,7 @@ export default {
                   {{ pinnedConversations.has(conv.value.channel) ? '📌 Unpin' : '📌 Pin' }}
                 </button>
                 <button @click="toggleFavorite(conv.value.channel); closeActionMenu()">
-                  {{ favorited.has(conv.value.channel) ? '☆ Unfavorite' : '⭐ Favorite' }}
+                  {{ favorited.has(conv.value.channel) ? '☆ Unstar conversation' : '⭐ Star conversation' }}
                 </button>
                 <button @click="toggleArchive(conv.value.channel); closeActionMenu()">
                   {{ archived.has(conv.value.channel) ? '📦 Unarchive' : '📦 Archive' }}
@@ -1705,6 +1857,12 @@ export default {
                 @click.stop="openAddTeammateModal(selectedConv)"
                 title="Add confirmed teammate"
               >+</button>
+              <button
+                v-if="(selectedConv?.value.participants?.length ?? 0) > 2"
+                class="three-dot"
+                @click.stop="showMembersModal = true"
+                title="View all members"
+              >👥</button>
               <div
                 class="action-wrap open"
               >
@@ -1719,12 +1877,19 @@ export default {
                   @click.stop
                 >
                   <button @click="markUnread(selectedConv)">🔵 Mark unread</button>
-                  <button @click="openProfileModal(convOtherActor(selectedConv)); closeActionMenu()">👤 View profile</button>
+                  <button
+                    v-if="(selectedConv?.value.participants?.length ?? 0) > 2"
+                    @click="showMembersModal = true; closeActionMenu()"
+                  >👥 Members</button>
+                  <button
+                    v-else
+                    @click="openProfileModal(convOtherActor(selectedConv)); closeActionMenu()"
+                  >👤 View profile</button>
                   <button @click="togglePin(selectedConv.value.channel); closeActionMenu()">
                     {{ pinnedConversations.has(selectedConv.value.channel) ? '📌 Unpin' : '📌 Pin' }}
                   </button>
                   <button @click="toggleFavorite(selectedConv.value.channel); closeActionMenu()">
-                    {{ favorited.has(selectedConv.value.channel) ? '☆ Unfavorite' : '⭐ Favorite' }}
+                    {{ favorited.has(selectedConv.value.channel) ? '☆ Unstar conversation' : '⭐ Star conversation' }}
                   </button>
                   <button @click="toggleArchive(selectedConv.value.channel); closeActionMenu()">
                     {{ archived.has(selectedConv.value.channel) ? '📦 Unarchive' : '📦 Archive' }}
@@ -1800,36 +1965,48 @@ export default {
                       class="msg-bubble"
                     >
                       <div v-if="msg.value.content">{{ msg.value.content }}</div>
-                      <a
-                        v-if="msg.value.attachment?.dataUrl"
-                        class="msg-attachment"
-                        :href="msg.value.attachment.dataUrl"
-                        :download="msg.value.attachment.name"
-                        target="_blank"
-                      >
-                        📎 {{ msg.value.attachment.name }}
-                      </a>
+                      <!-- dataUrl attachment -->
+                      <template v-if="msg.value.attachment?.dataUrl">
+                        <img
+                          v-if="msg.value.attachment.type?.startsWith('image/')"
+                          class="msg-attachment-img"
+                          style="cursor:pointer"
+                          :src="msg.value.attachment.dataUrl"
+                          @click="openLightbox(msg.value.attachment.dataUrl, msg.value.attachment.name)"
+                          alt=""
+                        >
+                        <a
+                          v-else
+                          class="msg-attachment"
+                          :href="msg.value.attachment.dataUrl"
+                          :download="msg.value.attachment.name"
+                          target="_blank"
+                        >📎 {{ msg.value.attachment.name }}</a>
+                      </template>
+                      <!-- graffiti media URL attachment -->
                       <graffiti-get-media
                         v-else-if="msg.value.attachment?.url"
                         v-slot="{ media }"
                         :url="msg.value.attachment.url"
                         :accept="{ types: [msg.value.attachment.type || 'application/octet-stream'] }"
                       >
-                        <a
-                          v-if="media?.dataUrl"
-                          class="msg-attachment"
-                          :href="media?.dataUrl"
-                          :download="msg.value.attachment.name"
-                          target="_blank"
-                        >
+                        <template v-if="media?.dataUrl">
                           <img
-                            v-if="media?.dataUrl && msg.value.attachment.type?.startsWith('image/')"
+                            v-if="msg.value.attachment.type?.startsWith('image/')"
                             class="msg-attachment-img"
+                            style="cursor:pointer"
                             :src="media.dataUrl"
+                            @click="openLightbox(media.dataUrl, msg.value.attachment.name)"
                             alt=""
                           >
-                          <span v-if="media?.dataUrl">📎 {{ msg.value.attachment.name }}</span>
-                        </a>
+                          <a
+                            v-else
+                            class="msg-attachment"
+                            :href="media.dataUrl"
+                            :download="msg.value.attachment.name"
+                            target="_blank"
+                          >📎 {{ msg.value.attachment.name }}</a>
+                        </template>
                       </graffiti-get-media>
                     </div>
                   </div>
@@ -1966,6 +2143,29 @@ export default {
             </div>
           </div>
 
+          <!-- Pending invite requests -->
+          <template v-if="pendingInvites.length">
+            <div class="team-note" style="margin:14px 0 6px;font-weight:700;color:var(--text)">📬 Invite Requests</div>
+            <div v-if="convInviteError" class="profile-msg err" style="margin-bottom:8px">⚠️ {{ convInviteError }}</div>
+            <div class="teammate-list" style="margin-bottom:8px">
+              <div v-for="inv in pendingInvites" :key="inv.url ?? inv.value.published" class="invite-row">
+                <div class="teammate-avatar" :style="actorAvatarStyle(inv.value.from)">
+                  <span v-if="!actorProfile(inv.value.from)?.value.avatar">{{ actorInitials(inv.value.from) }}</span>
+                </div>
+                <div class="teammate-info">
+                  <div class="teammate-name">{{ profileName(actorProfile(inv.value.from)) }} wants to team up</div>
+                  <div class="teammate-meta">
+                    {{ actorProfile(inv.value.from)?.value.major ?? '' }}{{ actorProfile(inv.value.from)?.value.school ? ' @ ' + actorProfile(inv.value.from).value.school : '' }}
+                  </div>
+                </div>
+                <div class="invite-actions" style="display:flex;gap:6px;flex-shrink:0">
+                  <button class="btn btn-primary btn-xs" :disabled="isAcceptingInvite" @click="acceptInviteInConv(inv)">Accept</button>
+                  <button class="btn btn-ghost btn-xs" @click="declineInviteInConv(inv)">Decline</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
           <div v-if="teamDraft.length < 3" class="teammate-search">
             <input
               class="form-input"
@@ -2050,6 +2250,61 @@ export default {
           <HackerCard :profile="profileModalTarget" :readOnly="true" />
         </div>
       </div>
+
+      <!-- ── Conversation members modal ── -->
+      <div v-if="showMembersModal" class="overlay open" @click.self="showMembersModal = false">
+        <div class="modal modal-sm">
+          <div class="modal-hdr">
+            <div class="modal-title">Members</div>
+            <button class="modal-close" @click="showMembersModal = false">✕</button>
+          </div>
+          <div class="teammate-list">
+            <div
+              v-for="actorId in (selectedConv?.value.participants ?? [])"
+              :key="actorId"
+              class="teammate-row"
+              :style="actorId !== myActor ? 'cursor:pointer' : ''"
+              @click="actorId !== myActor && (openProfileModal(actorId), showMembersModal = false)"
+            >
+              <div class="teammate-avatar" :style="actorAvatarStyle(actorId)">
+                <span v-if="!actorProfile(actorId)?.value.avatar">{{ actorInitials(actorId) }}</span>
+              </div>
+              <div class="teammate-info">
+                <div class="teammate-name">
+                  {{ actorId === myActor ? 'You' : profileName(actorProfile(actorId)) }}
+                  <span v-if="actorProfile(actorId)?.value.pronouns">({{ actorProfile(actorId).value.pronouns }})</span>
+                </div>
+                <div class="teammate-meta">
+                  {{ actorProfile(actorId)?.value.major ?? '' }}{{ actorProfile(actorId)?.value.school ? ' @ ' + actorProfile(actorId).value.school : '' }}
+                </div>
+              </div>
+              <span v-if="actorId !== myActor" style="font-size:11px;color:var(--text3)">View →</span>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary btn-sm" @click="showMembersModal = false">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Image lightbox ── -->
+      <Teleport to="body">
+        <div v-if="lightboxImg" class="overlay open gallery-overlay" @click.self="closeLightbox">
+          <div class="modal photo-expanded-modal">
+            <div class="modal-hdr">
+              <div class="modal-title">{{ lightboxImg.name }}</div>
+              <button class="modal-close" @click="closeLightbox">✕</button>
+            </div>
+            <div class="gallery-expanded-stage">
+              <figure class="gallery-expanded-photo">
+                <div class="gallery-expanded-media-shell">
+                  <img :src="lightboxImg.src" alt="" style="max-width:100%;max-height:70vh;object-fit:contain">
+                </div>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
     </div>
   `,
