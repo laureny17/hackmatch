@@ -10,6 +10,8 @@ import {
   CONVERSATION_SCHEMA,
   TRACKS,
   YEARS,
+  SCHOOLS,
+  FIELDS_OF_INTEREST,
   PROFILE_QUESTIONS,
   conversationPairKey,
   conversationParticipantKey,
@@ -94,6 +96,27 @@ export default {
 
     const deletedConversations = ref(getDeletedConversations());
     const deletedChannelHistory = ref(getDeletedChannelHistory());
+
+    function getHiddenActors() {
+      try { return new Set(JSON.parse(localStorage.getItem("hm_hidden_actors") || "[]")); }
+      catch { return new Set(); }
+    }
+    function saveHiddenActors(s) {
+      localStorage.setItem("hm_hidden_actors", JSON.stringify([...s]));
+    }
+    const hiddenActors = ref(getHiddenActors());
+    const showHiddenManagement = ref(false);
+
+    function hideActor(actorId) {
+      hiddenActors.value = new Set([...hiddenActors.value, actorId]);
+      saveHiddenActors(hiddenActors.value);
+    }
+    function unhideActor(actorId) {
+      const next = new Set(hiddenActors.value);
+      next.delete(actorId);
+      hiddenActors.value = next;
+      saveHiddenActors(hiddenActors.value);
+    }
 
     function refreshDeletedConversations() {
       deletedConversations.value = getDeletedConversations();
@@ -185,6 +208,8 @@ export default {
       years: [],
       statuses: [],
       lookingForCount: "",
+      schools: [],
+      fields: [],
     });
     const showFilterModal = ref(false);
 
@@ -194,6 +219,16 @@ export default {
       years: [],
       statuses: [],
       lookingForCount: "",
+      schools: [],
+      fields: [],
+    });
+    const schoolFilterSearch = ref("");
+    const schoolFilterResults = computed(() => {
+      const q = schoolFilterSearch.value.trim().toLowerCase();
+      if (!q) return [];
+      return SCHOOLS.filter(s =>
+        s.toLowerCase().includes(q) && !pendingFilters.value.schools.includes(s)
+      ).slice(0, 10);
     });
     function openFilter() {
       pendingFilters.value = {
@@ -201,7 +236,10 @@ export default {
         years: [...filters.value.years],
         statuses: [...filters.value.statuses],
         lookingForCount: filters.value.lookingForCount,
+        schools: [...filters.value.schools],
+        fields: [...filters.value.fields],
       };
+      schoolFilterSearch.value = "";
       showFilterModal.value = true;
     }
     function applyFilters() {
@@ -210,8 +248,11 @@ export default {
         years: [...pendingFilters.value.years],
         statuses: [...pendingFilters.value.statuses],
         lookingForCount: pendingFilters.value.lookingForCount,
+        schools: [...pendingFilters.value.schools],
+        fields: [...pendingFilters.value.fields],
       };
       showFilterModal.value = false;
+      currentPage.value = 1;
     }
     function clearFilters() {
       pendingFilters.value = {
@@ -219,7 +260,10 @@ export default {
         years: [],
         statuses: [],
         lookingForCount: "",
+        schools: [],
+        fields: [],
       };
+      schoolFilterSearch.value = "";
     }
     function togglePendingTrack(t) {
       const i = pendingFilters.value.tracks.indexOf(t);
@@ -237,6 +281,20 @@ export default {
       else pendingFilters.value.statuses.push(s);
       if (s === "green" && i >= 0) pendingFilters.value.lookingForCount = "";
     }
+    function addPendingSchool(school) {
+      if (!pendingFilters.value.schools.includes(school)) {
+        pendingFilters.value.schools.push(school);
+      }
+      schoolFilterSearch.value = "";
+    }
+    function removePendingSchool(school) {
+      pendingFilters.value.schools = pendingFilters.value.schools.filter(s => s !== school);
+    }
+    function togglePendingField(field) {
+      const i = pendingFilters.value.fields.indexOf(field);
+      if (i >= 0) pendingFilters.value.fields.splice(i, 1);
+      else pendingFilters.value.fields.push(field);
+    }
     function removeFilterTrack(t) {
       filters.value.tracks = filters.value.tracks.filter((x) => x !== t);
     }
@@ -245,6 +303,14 @@ export default {
     }
     function removeFilterStatus(s) {
       filters.value.statuses = filters.value.statuses.filter((x) => x !== s);
+    }
+    function removeFilterSchool(s) {
+      filters.value.schools = filters.value.schools.filter((x) => x !== s);
+      currentPage.value = 1;
+    }
+    function removeFilterField(f) {
+      filters.value.fields = filters.value.fields.filter((x) => x !== f);
+      currentPage.value = 1;
     }
     function clearLookingForCount() {
       filters.value.lookingForCount = "";
@@ -258,12 +324,14 @@ export default {
         filters.value.tracks.length ||
         filters.value.years.length ||
         filters.value.statuses.length ||
+        filters.value.schools.length ||
+        filters.value.fields.length ||
         (filters.value.statuses.includes("green") &&
           filters.value.lookingForCount !== ""),
     );
 
     const filteredProfiles = computed(() => {
-      let list = allProfiles.value;
+      let list = allProfiles.value.filter(p => !hiddenActors.value.has(p.actor));
       const q = searchQuery.value.trim().toLowerCase();
       if (q) {
         list = list.filter((p) => {
@@ -308,8 +376,27 @@ export default {
             Number(p.value.lookingForCount) === count,
         );
       }
+      if (filters.value.schools.length) {
+        list = list.filter((p) => filters.value.schools.includes(p.value.school));
+      }
+      if (filters.value.fields.length) {
+        list = list.filter((p) =>
+          filters.value.fields.some((f) => (p.value.fieldsOfInterest ?? []).includes(f)),
+        );
+      }
       return list;
     });
+
+    // ── Pagination ───────────────────────────────────────────────────
+    const PAGE_SIZE = 10;
+    const currentPage = ref(1);
+    const totalPages = computed(() => Math.max(1, Math.ceil(filteredProfiles.value.length / PAGE_SIZE)));
+    const pagedProfiles = computed(() => {
+      const start = (currentPage.value - 1) * PAGE_SIZE;
+      return filteredProfiles.value.slice(start, start + PAGE_SIZE);
+    });
+    // Reset to page 1 when filters or search change
+    watch([searchQuery, filters], () => { currentPage.value = 1; }, { deep: true });
 
     function hasConversation(actorId) {
       return !!existingConversationWith(actorId);
@@ -532,8 +619,25 @@ export default {
       handleMessage,
       sendMsg,
       hasConversation,
+      hiddenActors,
+      showHiddenManagement,
+      hideActor,
+      unhideActor,
+      allProfiles,
       TRACKS,
       YEARS,
+      SCHOOLS,
+      FIELDS_OF_INTEREST,
+      schoolFilterSearch,
+      schoolFilterResults,
+      addPendingSchool,
+      removePendingSchool,
+      togglePendingField,
+      removeFilterSchool,
+      removeFilterField,
+      currentPage,
+      totalPages,
+      pagedProfiles,
     };
   },
 
@@ -557,34 +661,41 @@ export default {
         >
           ⚙️ Filter
           <span v-if="hasActiveFilters" class="filter-count">
-            {{ filters.tracks.length + filters.years.length + filters.statuses.length + (filters.statuses.includes('green') && filters.lookingForCount !== '' ? 1 : 0) }}
+            {{ filters.tracks.length + filters.years.length + filters.statuses.length + filters.schools.length + filters.fields.length + (filters.statuses.includes('green') && filters.lookingForCount !== '' ? 1 : 0) }}
           </span>
         </button>
+        <!-- Hidden people button (top-right) -->
+        <div v-if="hiddenActors.size > 0" class="hidden-people-wrap">
+          <button class="btn-hidden-toggle" @click="showHiddenManagement = !showHiddenManagement">
+            👁 {{ hiddenActors.size }} hidden
+          </button>
+          <div v-if="showHiddenManagement" class="hidden-people-dropdown">
+            <div class="hidden-people-hdr">Hidden people</div>
+            <div
+              v-for="actorId in [...hiddenActors]"
+              :key="actorId"
+              class="hidden-person-row"
+            >
+              <span class="hidden-person-name">
+                {{ allProfiles.find(p => p.actor === actorId)?.value.name?.first }}
+                {{ allProfiles.find(p => p.actor === actorId)?.value.name?.last || '(unknown)' }}
+              </span>
+              <button class="btn-unhide" @click="unhideActor(actorId)">Unhide</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="feed-container">
 
         <!-- Active filter chips -->
         <div v-if="hasActiveFilters" class="filter-active-bar">
-          <span
-            v-for="t in filters.tracks"
-            :key="'t'+t"
-            class="filter-chip"
-          >{{ t }} <span class="filter-chip-rm" @click="removeFilterTrack(t)">✕</span></span>
-          <span
-            v-for="y in filters.years"
-            :key="'y'+y"
-            class="filter-chip"
-          >{{ y }} <span class="filter-chip-rm" @click="removeFilterYear(y)">✕</span></span>
-          <span
-            v-for="s in filters.statuses"
-            :key="'s'+s"
-            class="filter-chip"
-          >{{ {green:'Looking',yellow:'Deciding',red:'Full'}[s] }} <span class="filter-chip-rm" @click="removeFilterStatus(s)">✕</span></span>
-          <span
-            v-if="filters.statuses.includes('green') && filters.lookingForCount !== ''"
-            class="filter-chip"
-          >Looking for {{ filters.lookingForCount }} <span class="filter-chip-rm" @click="clearLookingForCount">✕</span></span>
+          <span v-for="t in filters.tracks" :key="'t'+t" class="filter-chip">{{ t }} <span class="filter-chip-rm" @click="removeFilterTrack(t)">✕</span></span>
+          <span v-for="y in filters.years" :key="'y'+y" class="filter-chip">{{ y }} <span class="filter-chip-rm" @click="removeFilterYear(y)">✕</span></span>
+          <span v-for="s in filters.statuses" :key="'s'+s" class="filter-chip">{{ {green:'Looking',yellow:'Deciding',red:'Full'}[s] }} <span class="filter-chip-rm" @click="removeFilterStatus(s)">✕</span></span>
+          <span v-if="filters.statuses.includes('green') && filters.lookingForCount !== ''" class="filter-chip">Looking for {{ filters.lookingForCount }} <span class="filter-chip-rm" @click="clearLookingForCount">✕</span></span>
+          <span v-for="sc in filters.schools" :key="'sc'+sc" class="filter-chip">🎓 {{ sc }} <span class="filter-chip-rm" @click="removeFilterSchool(sc)">✕</span></span>
+          <span v-for="fi in filters.fields" :key="'fi'+fi" class="filter-chip">💡 {{ fi }} <span class="filter-chip-rm" @click="removeFilterField(fi)">✕</span></span>
         </div>
 
         <!-- Not logged in -->
@@ -606,16 +717,24 @@ export default {
           <div class="empty-sub">Try adjusting your search or filters — or be the first to post a profile!</div>
         </div>
 
-        <!-- Profile cards -->
+        <!-- Profile cards (paginated) -->
         <template v-else>
           <HackerCard
-            v-for="profile in filteredProfiles"
+            v-for="profile in pagedProfiles"
             :key="profile.url"
             :profile="profile"
             :conversationStarted="hasConversation(profile.actor)"
             @reply="openReply"
             @message="handleMessage"
+            @hide="hideActor"
           />
+
+          <!-- Pagination controls -->
+          <div v-if="totalPages > 1" class="pagination">
+            <button class="page-btn" :disabled="currentPage === 1" @click="currentPage--">‹</button>
+            <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+            <button class="page-btn" :disabled="currentPage === totalPages" @click="currentPage++">›</button>
+          </div>
         </template>
 
       </div>
@@ -822,6 +941,48 @@ export default {
                   @click="setPendingLookingForCount(String(n))"
                 >{{ n }}</button>
               </div>
+            </div>
+          </div>
+
+          <div class="filter-sec">
+            <div class="filter-sec-title">🎓 School</div>
+            <div class="school-filter-search-wrap">
+              <input
+                class="form-input form-input-sm"
+                v-model="schoolFilterSearch"
+                placeholder="Search schools..."
+                autocomplete="off"
+              >
+              <div v-if="schoolFilterResults.length" class="school-filter-results">
+                <div
+                  v-for="s in schoolFilterResults"
+                  :key="s"
+                  class="school-filter-option"
+                  @click="addPendingSchool(s)"
+                >{{ s }}</div>
+              </div>
+            </div>
+            <div v-if="pendingFilters.schools.length" class="chip-grid" style="margin-top:8px">
+              <span
+                v-for="s in pendingFilters.schools"
+                :key="s"
+                class="filter-chip"
+              >{{ s }} <span class="filter-chip-rm" @click="removePendingSchool(s)">✕</span></span>
+            </div>
+          </div>
+
+          <div class="filter-sec">
+            <div class="filter-sec-title">💡 Fields of Interest</div>
+            <div class="chip-grid">
+              <label
+                v-for="f in FIELDS_OF_INTEREST"
+                :key="f"
+                class="chip"
+                :class="{ sel: pendingFilters.fields.includes(f) }"
+              >
+                <input type="checkbox" :checked="pendingFilters.fields.includes(f)" @change="togglePendingField(f)">
+                {{ f }}
+              </label>
             </div>
           </div>
 

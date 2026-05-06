@@ -178,8 +178,11 @@ const App = {
           @open-conversation="actor => openConversation(actor)"
         />
 
+        <!-- v-show (not v-if) keeps ConversationsPage always mounted so its
+             Graffiti discover hooks run in the background and unread counts
+             are available before the user first navigates to Messages. -->
         <ConversationsPage
-          v-else-if="routedPage === 'conversations'"
+          v-show="routedPage === 'conversations'"
           :openWithActor="pendingConvActor"
           :openWithMessage="pendingConvMessage"
           :routeChatId="routeChatId"
@@ -188,7 +191,7 @@ const App = {
         />
 
         <ProfilePage
-          v-else
+          v-if="routedPage === 'profile'"
           @profile-saved="navigate('feed')"
         />
       </template>

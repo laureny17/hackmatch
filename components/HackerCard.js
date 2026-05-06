@@ -17,7 +17,7 @@ export default {
     readOnly: { type: Boolean, default: false },
     conversationStarted: { type: Boolean, default: false },
   },
-  emits: ["reply", "message"],
+  emits: ["reply", "message", "hide"],
 
   setup(props) {
     return { avatarGradient, initials, trackColor, PROFILE_QUESTIONS };
@@ -114,6 +114,9 @@ export default {
       <div v-if="!readOnly && !isSelf" class="card-footer">
         <button class="btn btn-message btn-sm" @click="$emit('message', profile)">
           💬 {{ conversationStarted ? 'Open chat' : 'Message' }}
+        </button>
+        <button class="btn-hide-person" @click="$emit('hide', profile.actor)" title="Hide from feed">
+          Hide
         </button>
       </div>
 

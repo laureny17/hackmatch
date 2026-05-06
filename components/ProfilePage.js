@@ -11,6 +11,7 @@ import {
   TEAM_DECLINE_SCHEMA,
   TRACKS,
   YEARS,
+  SCHOOLS,
   PROFILE_QUESTIONS,
   FIELDS_OF_INTEREST,
   avatarGradient,
@@ -255,6 +256,9 @@ export default {
     const wizardStep = ref(cached?.firstName ? -1 : 0)
     const isWizardMode = computed(() => !myProfile.value && !profileLoading.value && wizardStep.value >= 0)
 
+    // Declared early so the myProfile watcher (immediate) can reference it safely
+    const schoolSearch = ref(form.value.school ?? "");
+
     // Pre-fill form from Graffiti profile only when a newer profile appears.
     // This avoids clobbering in-progress edits on each discover poll.
     const lastHydratedPublished = ref(null);
@@ -285,6 +289,7 @@ export default {
           gallery: [...(v.gallery ?? [])].slice(0, 10),
         };
         form.value = fresh;
+        schoolSearch.value = fresh.school ?? "";
         lastHydratedPublished.value = published;
         wizardStep.value = -1; // profile exists — use full form
         localStorage.setItem(FORM_CACHE_KEY, JSON.stringify(fresh));
@@ -292,10 +297,44 @@ export default {
       { immediate: true },
     );
 
+    // Auto-save form draft to localStorage on every change.
+    // Covers both wizard (no-profile-yet) and edit mode — data survives
+    // navigation even if the user never clicks Save/Create Profile.
+    watch(form, (f) => {
+      try { localStorage.setItem(FORM_CACHE_KEY, JSON.stringify(f)); } catch {}
+    }, { deep: true });
+
     // ── Validation ────────────────────────────────────────────────────
     const errorMsg = ref("");
     const successMsg = ref("");
     const isSaving = ref(false);
+
+    // ── School combobox ──────────────────────────────────────────────
+    const schoolDropdownOpen = ref(false);
+    const schoolFilteredList = computed(() => {
+      const q = schoolSearch.value.trim().toLowerCase();
+      if (!q) return SCHOOLS;
+      return SCHOOLS.filter(s => s.toLowerCase().includes(q));
+    });
+    function selectSchool(school) {
+      form.value.school = school;
+      schoolSearch.value = school;
+      schoolDropdownOpen.value = false;
+    }
+    function onSchoolInput(e) {
+      schoolSearch.value = e.target.value;
+      form.value.school = "";
+      schoolDropdownOpen.value = true;
+    }
+    function onSchoolBlur() {
+      setTimeout(() => {
+        schoolDropdownOpen.value = false;
+        // If user typed but didn't pick from list, revert display to last valid selection
+        if (!form.value.school) {
+          schoolSearch.value = "";
+        }
+      }, 150);
+    }
 
     function validate() {
       const f = form.value;
@@ -906,8 +945,15 @@ export default {
       AVATAR_CROP_SIZE,
       TRACKS,
       YEARS,
+      SCHOOLS,
       PROFILE_QUESTIONS,
       FIELDS_OF_INTEREST,
+      schoolSearch,
+      schoolDropdownOpen,
+      schoolFilteredList,
+      selectSchool,
+      onSchoolInput,
+      onSchoolBlur,
       avatarGradient,
       initials,
       toggleField,
@@ -1005,7 +1051,25 @@ export default {
             <div class="form-grid" style="margin-top:16px">
               <div class="form-grp full">
                 <label class="form-label">School / University <span class="req-star">*</span></label>
-                <input class="form-input" v-model="form.school" placeholder="e.g. MIT">
+                <div class="school-combo">
+                  <input
+                    class="form-input"
+                    :value="schoolSearch"
+                    @input="onSchoolInput"
+                    @focus="schoolDropdownOpen = true"
+                    @blur="onSchoolBlur"
+                    placeholder="Search for your school..."
+                    autocomplete="off"
+                  >
+                  <div v-if="schoolDropdownOpen && schoolFilteredList.length" class="school-combo-dropdown">
+                    <div
+                      v-for="s in schoolFilteredList.slice(0, 20)"
+                      :key="s"
+                      class="school-combo-option"
+                      @mousedown.prevent="selectSchool(s)"
+                    >{{ s }}</div>
+                  </div>
+                </div>
               </div>
               <div class="form-grp">
                 <label class="form-label">Class Year <span class="req-star">*</span></label>
@@ -1144,7 +1208,25 @@ export default {
             </div>
             <div class="form-grp full">
               <label class="form-label">School / University <span class="req-star">*</span></label>
-              <input class="form-input" v-model="form.school" placeholder="e.g. MIT">
+              <div class="school-combo">
+                <input
+                  class="form-input"
+                  :value="schoolSearch"
+                  @input="onSchoolInput"
+                  @focus="schoolDropdownOpen = true"
+                  @blur="onSchoolBlur"
+                  placeholder="Search for your school..."
+                  autocomplete="off"
+                >
+                <div v-if="schoolDropdownOpen && schoolFilteredList.length" class="school-combo-dropdown">
+                  <div
+                    v-for="s in schoolFilteredList.slice(0, 20)"
+                    :key="s"
+                    class="school-combo-option"
+                    @mousedown.prevent="selectSchool(s)"
+                  >{{ s }}</div>
+                </div>
+              </div>
             </div>
             <div class="form-grp full">
               <label class="form-label">Major / Field <span class="req-star">*</span></label>
