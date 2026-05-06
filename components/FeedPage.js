@@ -873,12 +873,13 @@ export default {
 
       <!-- ── Filter Modal ── -->
       <div v-if="showFilterModal" class="overlay open" @click.self="showFilterModal = false">
-        <div class="modal modal-md">
+        <div class="modal modal-filter">
           <div class="modal-hdr">
             <div class="modal-title">Filter Profiles</div>
             <button class="modal-close" @click="showFilterModal = false">✕</button>
           </div>
 
+          <div class="modal-filter-body">
           <div class="filter-sec">
             <div class="filter-sec-title">🎯 Tracks</div>
             <div class="chip-grid">
@@ -985,6 +986,8 @@ export default {
               </label>
             </div>
           </div>
+
+          </div><!-- /modal-filter-body -->
 
           <div class="modal-actions">
             <button class="btn btn-secondary btn-sm" @click="clearFilters">Clear All</button>

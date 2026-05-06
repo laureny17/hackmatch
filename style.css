@@ -1167,6 +1167,25 @@ main {
 }
 
 /* Filter modal */
+.modal-filter {
+  max-width: 680px;
+  overflow: hidden;   /* clip child scrollbar to border-radius */
+  padding: 0;         /* padding is distributed to inner zones */
+}
+.modal-filter .modal-hdr {
+  padding: 22px 26px 16px;
+}
+.modal-filter-body {
+  overflow-y: auto;
+  max-height: calc(88vh - 140px); /* 88vh total minus header (~62px) and actions (~78px) */
+  padding: 0 26px 4px;
+}
+.modal-filter .modal-actions {
+  padding: 14px 26px 22px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 0;
+}
+
 .filter-sec {
   margin-bottom: 18px;
 }
