@@ -1,4 +1,4 @@
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, nextTick } from "vue";
 import {
   useGraffiti,
   useGraffitiSession,
@@ -130,14 +130,20 @@ export default {
       const newTeammates = [...newTeammateSet].slice(0, 3);
       try {
         if (myProfile.value) {
-          const v = myProfile.value.value;
-          await graffiti.delete(myProfile.value, session.value);
+          const oldProf = myProfile.value;
+          const v = oldProf.value;
+          const publishedTs = Date.now();
           await graffiti.post(
-            { value: { ...v, confirmedTeammates: newTeammates, published: Date.now() }, channels: [HACKMATCH_CHANNEL] },
+            { value: { ...v, confirmedTeammates: newTeammates, published: publishedTs }, channels: [HACKMATCH_CHANNEL] },
             session.value,
           );
+          lastSavedTimestamp.value = publishedTs;
+          lastHydratedPublished.value = publishedTs;
+          graffiti.delete(oldProf, session.value).catch(() => {});
         }
+        isHydrating = true;
         form.value.confirmedTeammates = newTeammates;
+        nextTick(() => { isHydrating = false; });
         const cachedForm = loadCached() ?? {};
         localStorage.setItem(FORM_CACHE_KEY, JSON.stringify({ ...cachedForm, confirmedTeammates: newTeammates }));
         const invKey = invite.url ?? `${invite.value.from}:${invite.value.published}`;
@@ -181,15 +187,21 @@ export default {
         if (autoRemovedKeys.has(key)) continue;
         autoRemovedKeys.add(key);
         // Remove them from our list without posting another TeamDecline (no loop)
+        isHydrating = true;
         form.value.confirmedTeammates = (form.value.confirmedTeammates ?? []).filter(id => id !== from);
+        nextTick(() => { isHydrating = false; });
         if (myProfile.value && session.value) {
           try {
-            const v = myProfile.value.value;
-            await graffiti.delete(myProfile.value, session.value);
+            const oldProf = myProfile.value;
+            const v = oldProf.value;
+            const publishedTs = Date.now();
             await graffiti.post(
-              { value: { ...v, confirmedTeammates: form.value.confirmedTeammates, published: Date.now() }, channels: [HACKMATCH_CHANNEL] },
+              { value: { ...v, confirmedTeammates: form.value.confirmedTeammates, published: publishedTs }, channels: [HACKMATCH_CHANNEL] },
               session.value,
             );
+            lastSavedTimestamp.value = publishedTs;
+            lastHydratedPublished.value = publishedTs;
+            graffiti.delete(oldProf, session.value).catch(() => {});
           } catch { /* non-critical */ }
         }
       }
@@ -259,6 +271,15 @@ export default {
     // Declared early so the myProfile watcher (immediate) can reference it safely
     const schoolSearch = ref(form.value.school ?? "");
 
+    // True while we are assigning form.value from Graffiti data (not user input).
+    // Prevents the auto-save watcher from firing during hydration.
+    let isHydrating = false;
+
+    // Timestamp of the last profile WE personally posted to Graffiti.
+    // The myProfile watcher refuses to hydrate from any profile older than this,
+    // which prevents Graffiti's polling from reverting the form to stale data.
+    const lastSavedTimestamp = ref(0);
+
     // Pre-fill form from Graffiti profile only when a newer profile appears.
     // This avoids clobbering in-progress edits on each discover poll.
     const lastHydratedPublished = ref(null);
@@ -267,6 +288,8 @@ export default {
       (p) => {
         if (!p) return;
         const published = p.value?.published ?? null;
+        // Reject profiles older than our last save — prevents post-save revert
+        if (lastSavedTimestamp.value > 0 && (published ?? 0) < lastSavedTimestamp.value) return;
         if (lastHydratedPublished.value === published) return;
 
         const v = p.value;
@@ -288,11 +311,14 @@ export default {
           avatar: v.avatar ?? null,
           gallery: [...(v.gallery ?? [])].slice(0, 10),
         };
+        isHydrating = true;
         form.value = fresh;
         schoolSearch.value = fresh.school ?? "";
         lastHydratedPublished.value = published;
         wizardStep.value = -1; // profile exists — use full form
         localStorage.setItem(FORM_CACHE_KEY, JSON.stringify(fresh));
+        // Clear flag after Vue flushes the form watcher caused by form.value = fresh
+        nextTick(() => { isHydrating = false; });
       },
       { immediate: true },
     );
@@ -377,16 +403,12 @@ export default {
       isSaving.value = true;
       autoSaveStatus.value = 'saving';
       const previousTeammates = new Set(myProfile.value?.value.confirmedTeammates ?? []);
+      // Capture the old profile BEFORE posting so we can delete it afterward
+      const oldProfile = myProfile.value;
       try {
-        if (myProfile.value) {
-          try {
-            await graffiti.delete(myProfile.value, session.value);
-          } catch (delErr) {
-            // Ignore "not found" — object may have already been replaced by a prior save
-            if (!(delErr?.message ?? String(delErr)).toLowerCase().includes('not found')) throw delErr;
-          }
-        }
         const f = form.value;
+        const publishedTs = Date.now();
+        // POST new profile first — new data is immediately visible, no null window
         await graffiti.post(
           {
             value: {
@@ -405,13 +427,20 @@ export default {
               ...(f.avatar ? { avatar: f.avatar } : {}),
               gallery: [...(f.gallery ?? [])].slice(0, 10),
               describes: session.value.actor,
-              published: Date.now(),
+              published: publishedTs,
             },
             channels: [HACKMATCH_CHANNEL],
           },
           session.value,
         );
+        // Lock the watcher against any profile older than this save
+        lastSavedTimestamp.value = publishedTs;
+        lastHydratedPublished.value = publishedTs;
         localStorage.setItem(FORM_CACHE_KEY, JSON.stringify(f));
+        // Delete old profile in the background — non-critical cleanup
+        if (oldProfile) {
+          graffiti.delete(oldProfile, session.value).catch(() => {});
+        }
         // Post TeamInvite to newly-added teammates
         const savedTeammates = [...new Set(f.confirmedTeammates ?? [])].slice(0, 3);
         const myActorId = session.value.actor;
@@ -446,9 +475,11 @@ export default {
       }
     }
 
-    // Debounced auto-save: triggers 1.5 s after last form change when form is valid
+    // Debounced auto-save: triggers 1.5 s after last form change when form is valid.
+    // Skips when the form change was caused by hydration, not user input.
     let autoSaveTimer = null;
     watch(form, () => {
+      if (isHydrating) return;
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => {
         if (validate().length === 0) doSave();
