@@ -2824,6 +2824,101 @@ main {
   color: var(--text1);
 }
 
+/* ── Character limit flash & tooltip ── */
+.limit-wrap {
+  position: relative;
+}
+.limit-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  background: #991b1b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  z-index: 20;
+  pointer-events: none;
+  animation: toast-in 0.15s ease;
+}
+.limit-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  border: 5px solid transparent;
+  border-top-color: #991b1b;
+}
+.at-limit input,
+.at-limit textarea {
+  animation: limit-flash 0.5s ease;
+}
+@keyframes limit-flash {
+  0%,100% { border-color: var(--border); box-shadow: none; }
+  25%,75%  { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.18); }
+}
+
+/* ── Auto-save toast ── */
+.autosave-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 9999;
+  box-shadow: var(--shadow-md);
+  animation: toast-in 0.2s ease;
+}
+.autosave-toast.saving {
+  background: #1e1b4b;
+  color: #fff;
+}
+.autosave-toast.saved {
+  background: #065f46;
+  color: #d1fae5;
+}
+.autosave-toast.error {
+  background: #7f1d1d;
+  color: #fee2e2;
+}
+.autosave-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.autosave-text {
+  white-space: nowrap;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Char counter ── */
+.char-count {
+  font-size: 11px;
+  color: var(--text3);
+  text-align: right;
+  margin-top: 4px;
+}
+.char-count.warn {
+  color: #d97706;
+  font-weight: 600;
+}
+
+/* ── Wizard done hint ── */
+.wizard-done-hint {
+  font-size: 13px;
+  color: var(--text3);
+  font-style: italic;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar {
   width: 5px;

@@ -236,7 +236,7 @@ export default {
       q2: "",
       q3: "",
       status: "green",
-      lookingForCount: 2,
+      lookingForCount: 3,
       confirmedTeammates: [],
       avatar: null,
       gallery: [],
@@ -283,7 +283,7 @@ export default {
           q2: v.answers?.q2 ?? "",
           q3: v.answers?.q3 ?? "",
           status: v.status ?? "green",
-          lookingForCount: v.lookingForCount ?? 2,
+          lookingForCount: v.lookingForCount ?? 3,
           confirmedTeammates: [...(v.confirmedTeammates ?? [])].slice(0, 3),
           avatar: v.avatar ?? null,
           gallery: [...(v.gallery ?? [])].slice(0, 10),
@@ -308,6 +308,27 @@ export default {
     const errorMsg = ref("");
     const successMsg = ref("");
     const isSaving = ref(false);
+    // 'idle' | 'saving' | 'saved' | 'error'
+    const autoSaveStatus = ref('idle');
+
+    // ── Character-limit flash state ───────────────────────────────────
+    const limitFlash = ref({});
+    const _limitTimers = {};
+    function checkLimit(e, name, maxLen) {
+      if (e.target.value.length >= maxLen) {
+        const isModifier = e.ctrlKey || e.metaKey || e.altKey;
+        const isNavKey = ['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','Tab','Escape','Enter'].includes(e.key);
+        if (!isModifier && !isNavKey && e.key.length === 1) {
+          limitFlash.value = { ...limitFlash.value, [name]: true };
+          clearTimeout(_limitTimers[name]);
+          _limitTimers[name] = setTimeout(() => {
+            const next = { ...limitFlash.value };
+            delete next[name];
+            limitFlash.value = next;
+          }, 600);
+        }
+      }
+    }
 
     // ── School combobox ──────────────────────────────────────────────
     const schoolDropdownOpen = ref(false);
@@ -351,18 +372,19 @@ export default {
       return missing;
     }
 
-    async function saveProfile() {
-      errorMsg.value = "";
-      successMsg.value = "";
-      const missing = validate();
-      if (missing.length) {
-        errorMsg.value = "Please fill in: " + missing.join(", ");
-        return;
-      }
+    async function doSave() {
+      if (!session.value || isSaving.value) return;
       isSaving.value = true;
+      autoSaveStatus.value = 'saving';
+      const previousTeammates = new Set(myProfile.value?.value.confirmedTeammates ?? []);
       try {
         if (myProfile.value) {
-          await graffiti.delete(myProfile.value, session.value);
+          try {
+            await graffiti.delete(myProfile.value, session.value);
+          } catch (delErr) {
+            // Ignore "not found" — object may have already been replaced by a prior save
+            if (!(delErr?.message ?? String(delErr)).toLowerCase().includes('not found')) throw delErr;
+          }
         }
         const f = form.value;
         await graffiti.post(
@@ -379,9 +401,7 @@ export default {
               answers: { q1: f.q1, q2: f.q2, q3: f.q3 },
               status: f.status,
               lookingForCount: Math.min(3, Math.max(1, Number(f.lookingForCount) || 1)),
-              confirmedTeammates: [
-                ...new Set(f.confirmedTeammates ?? []),
-              ].slice(0, 3),
+              confirmedTeammates: [...new Set(f.confirmedTeammates ?? [])].slice(0, 3),
               ...(f.avatar ? { avatar: f.avatar } : {}),
               gallery: [...(f.gallery ?? [])].slice(0, 10),
               describes: session.value.actor,
@@ -392,13 +412,12 @@ export default {
           session.value,
         );
         localStorage.setItem(FORM_CACHE_KEY, JSON.stringify(f));
-        // Post TeamInvite to newly-added teammates so they can accept
-        const previousTeammates = new Set(myProfile.value?.value.confirmedTeammates ?? []);
+        // Post TeamInvite to newly-added teammates
         const savedTeammates = [...new Set(f.confirmedTeammates ?? [])].slice(0, 3);
         const myActorId = session.value.actor;
         const fullTeam = [myActorId, ...savedTeammates];
         for (const targetActor of savedTeammates) {
-          if (previousTeammates.has(targetActor)) continue; // already had them
+          if (previousTeammates.has(targetActor)) continue;
           try {
             await graffiti.post(
               {
@@ -414,21 +433,27 @@ export default {
               },
               session.value,
             );
-          } catch {
-            // Non-critical: invite posting failure shouldn't block profile save
-          }
+          } catch { /* non-critical */ }
         }
-        successMsg.value = "Profile saved! ✓";
-        setTimeout(() => {
-          successMsg.value = "";
-        }, 3000);
+        autoSaveStatus.value = 'saved';
+        setTimeout(() => { if (autoSaveStatus.value === 'saved') autoSaveStatus.value = 'idle'; }, 2500);
       } catch (err) {
-        errorMsg.value = "Save failed: " + (err?.message ?? err);
-        console.error("saveProfile error:", err);
+        autoSaveStatus.value = 'error';
+        errorMsg.value = "Auto-save failed: " + (err?.message ?? err);
+        setTimeout(() => { if (autoSaveStatus.value === 'error') autoSaveStatus.value = 'idle'; }, 3000);
       } finally {
         isSaving.value = false;
       }
     }
+
+    // Debounced auto-save: triggers 1.5 s after last form change when form is valid
+    let autoSaveTimer = null;
+    watch(form, () => {
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(() => {
+        if (validate().length === 0) doSave();
+      }, 1500);
+    }, { deep: true });
 
     function toggleTrack(track) {
       const idx = form.value.tracks.indexOf(track);
@@ -899,7 +924,7 @@ export default {
       errorMsg,
       successMsg,
       isSaving,
-      saveProfile,
+      autoSaveStatus,
       toggleTrack,
       teammateSearch,
       teammateResults,
@@ -971,6 +996,8 @@ export default {
       profileByActor,
       mutualTeammates,
       pendingOutgoing,
+      limitFlash,
+      checkLimit,
     };
   },
 
@@ -1031,15 +1058,24 @@ export default {
             <div class="form-grid" style="margin-top:16px">
               <div class="form-grp">
                 <label class="form-label">First Name <span class="req-star">*</span></label>
-                <input class="form-input" v-model="form.firstName" placeholder="e.g. Alex">
+                <div class="limit-wrap" :class="{ 'at-limit': limitFlash['firstName'] }">
+                  <div class="limit-tooltip" v-if="limitFlash['firstName']">Character limit exceeded</div>
+                  <input class="form-input" v-model="form.firstName" placeholder="e.g. Alex" maxlength="20" @keydown="e => checkLimit(e, 'firstName', 20)">
+                </div>
               </div>
               <div class="form-grp">
                 <label class="form-label">Last Name <span class="req-star">*</span></label>
-                <input class="form-input" v-model="form.lastName" placeholder="e.g. Chen">
+                <div class="limit-wrap" :class="{ 'at-limit': limitFlash['lastName'] }">
+                  <div class="limit-tooltip" v-if="limitFlash['lastName']">Character limit exceeded</div>
+                  <input class="form-input" v-model="form.lastName" placeholder="e.g. Chen" maxlength="20" @keydown="e => checkLimit(e, 'lastName', 20)">
+                </div>
               </div>
               <div class="form-grp full">
                 <label class="form-label">Pronouns <span style="color:var(--text3);font-weight:400">(optional)</span></label>
-                <input class="form-input" v-model="form.pronouns" placeholder="e.g. she/her">
+                <div class="limit-wrap" :class="{ 'at-limit': limitFlash['pronouns'] }">
+                  <div class="limit-tooltip" v-if="limitFlash['pronouns']">Character limit exceeded</div>
+                  <input class="form-input" v-model="form.pronouns" placeholder="e.g. she/her" maxlength="20" @keydown="e => checkLimit(e, 'pronouns', 20)">
+                </div>
               </div>
             </div>
           </div>
@@ -1080,7 +1116,10 @@ export default {
               </div>
               <div class="form-grp">
                 <label class="form-label">Major / Field <span class="req-star">*</span></label>
-                <input class="form-input" v-model="form.major" placeholder="e.g. CS + Design">
+                <div class="limit-wrap" :class="{ 'at-limit': limitFlash['major'] }">
+                  <div class="limit-tooltip" v-if="limitFlash['major']">Character limit exceeded</div>
+                  <input class="form-input" v-model="form.major" placeholder="e.g. CS + Design" maxlength="50" @keydown="e => checkLimit(e, 'major', 50)">
+                </div>
               </div>
             </div>
           </div>
@@ -1115,21 +1154,33 @@ export default {
           <div v-else-if="wizardStep === 5" class="wizard-step">
             <div class="wizard-step-label">Step 5 of 8</div>
             <div class="wizard-step-title">💬 {{ PROFILE_QUESTIONS[0] }}</div>
-            <textarea class="form-ta wizard-ta" v-model="form.q1" placeholder="Your answer..."></textarea>
+            <div class="limit-wrap" :class="{ 'at-limit': limitFlash['q1'] }">
+              <div class="limit-tooltip" v-if="limitFlash['q1']">Character limit exceeded</div>
+              <textarea class="form-ta wizard-ta" v-model="form.q1" placeholder="Your answer..." maxlength="500" @keydown="e => checkLimit(e, 'q1', 500)"></textarea>
+            </div>
+            <div class="char-count" :class="{ warn: (form.q1 || '').length >= 480 }">{{ (form.q1 || '').length }}/500</div>
           </div>
 
           <!-- Step 6: Q2 -->
           <div v-else-if="wizardStep === 6" class="wizard-step">
             <div class="wizard-step-label">Step 6 of 8</div>
             <div class="wizard-step-title">💬 {{ PROFILE_QUESTIONS[1] }}</div>
-            <textarea class="form-ta wizard-ta" v-model="form.q2" placeholder="Your answer..."></textarea>
+            <div class="limit-wrap" :class="{ 'at-limit': limitFlash['q2'] }">
+              <div class="limit-tooltip" v-if="limitFlash['q2']">Character limit exceeded</div>
+              <textarea class="form-ta wizard-ta" v-model="form.q2" placeholder="Your answer..." maxlength="500" @keydown="e => checkLimit(e, 'q2', 500)"></textarea>
+            </div>
+            <div class="char-count" :class="{ warn: (form.q2 || '').length >= 480 }">{{ (form.q2 || '').length }}/500</div>
           </div>
 
           <!-- Step 7: Q3 -->
           <div v-else-if="wizardStep === 7" class="wizard-step">
             <div class="wizard-step-label">Step 7 of 8</div>
             <div class="wizard-step-title">💬 {{ PROFILE_QUESTIONS[2] }}</div>
-            <textarea class="form-ta wizard-ta" v-model="form.q3" placeholder="Your answer..."></textarea>
+            <div class="limit-wrap" :class="{ 'at-limit': limitFlash['q3'] }">
+              <div class="limit-tooltip" v-if="limitFlash['q3']">Character limit exceeded</div>
+              <textarea class="form-ta wizard-ta" v-model="form.q3" placeholder="Your answer..." maxlength="500" @keydown="e => checkLimit(e, 'q3', 500)"></textarea>
+            </div>
+            <div class="char-count" :class="{ warn: (form.q3 || '').length >= 480 }">{{ (form.q3 || '').length }}/500</div>
           </div>
 
           <!-- Step 8: Status -->
@@ -1158,7 +1209,6 @@ export default {
           <!-- Wizard navigation -->
           <div v-if="wizardStep >= 1" class="wizard-nav">
             <div v-if="errorMsg" class="profile-msg err" style="margin-bottom:8px">⚠️ {{ errorMsg }}</div>
-            <div v-if="successMsg" class="profile-msg ok" style="margin-bottom:8px">{{ successMsg }}</div>
             <div class="wizard-nav-row">
               <button class="btn btn-ghost" @click="wizardStep--">← Back</button>
               <button
@@ -1167,15 +1217,7 @@ export default {
                 :disabled="!wizardCanAdvance()"
                 @click="wizardStep++"
               >Next →</button>
-              <button
-                v-else
-                class="btn btn-primary"
-                :disabled="isSaving"
-                @click="saveProfile"
-              >
-                <span v-if="isSaving" class="btn-spinner"></span>
-                <span>{{ isSaving ? 'Saving...' : 'Create Profile ✓' }}</span>
-              </button>
+              <span v-else class="wizard-done-hint">Your profile will be saved automatically ✓</span>
             </div>
           </div>
         </div>
@@ -1189,15 +1231,24 @@ export default {
           <div class="form-grid">
             <div class="form-grp">
               <label class="form-label">First Name <span class="req-star">*</span></label>
-              <input class="form-input" v-model="form.firstName" placeholder="e.g. Alex">
+              <div class="limit-wrap" :class="{ 'at-limit': limitFlash['firstName'] }">
+                <div class="limit-tooltip" v-if="limitFlash['firstName']">Character limit exceeded</div>
+                <input class="form-input" v-model="form.firstName" placeholder="e.g. Alex" maxlength="20" @keydown="e => checkLimit(e, 'firstName', 20)">
+              </div>
             </div>
             <div class="form-grp">
               <label class="form-label">Last Name <span class="req-star">*</span></label>
-              <input class="form-input" v-model="form.lastName" placeholder="e.g. Chen">
+              <div class="limit-wrap" :class="{ 'at-limit': limitFlash['lastName'] }">
+                <div class="limit-tooltip" v-if="limitFlash['lastName']">Character limit exceeded</div>
+                <input class="form-input" v-model="form.lastName" placeholder="e.g. Chen" maxlength="20" @keydown="e => checkLimit(e, 'lastName', 20)">
+              </div>
             </div>
             <div class="form-grp">
               <label class="form-label">Pronouns</label>
-              <input class="form-input" v-model="form.pronouns" placeholder="e.g. she/her">
+              <div class="limit-wrap" :class="{ 'at-limit': limitFlash['pronouns'] }">
+                <div class="limit-tooltip" v-if="limitFlash['pronouns']">Character limit exceeded</div>
+                <input class="form-input" v-model="form.pronouns" placeholder="e.g. she/her" maxlength="20" @keydown="e => checkLimit(e, 'pronouns', 20)">
+              </div>
             </div>
             <div class="form-grp">
               <label class="form-label">Class Year <span class="req-star">*</span></label>
@@ -1230,7 +1281,10 @@ export default {
             </div>
             <div class="form-grp full">
               <label class="form-label">Major / Field <span class="req-star">*</span></label>
-              <input class="form-input" v-model="form.major" placeholder="e.g. CS + Design">
+              <div class="limit-wrap" :class="{ 'at-limit': limitFlash['major'] }">
+                <div class="limit-tooltip" v-if="limitFlash['major']">Character limit exceeded</div>
+                <input class="form-input" v-model="form.major" placeholder="e.g. CS + Design" maxlength="50" @keydown="e => checkLimit(e, 'major', 50)">
+              </div>
             </div>
           </div>
         </div>
@@ -1269,7 +1323,11 @@ export default {
           <div style="display:flex;flex-direction:column;gap:14px">
             <div v-for="(q, i) in PROFILE_QUESTIONS" :key="i" class="form-grp">
               <label class="form-label">{{ q }} <span class="req-star">*</span></label>
-              <textarea class="form-ta" v-model="form['q' + (i+1)]" placeholder="Your answer..."></textarea>
+              <div class="limit-wrap" :class="{ 'at-limit': limitFlash['q' + (i+1)] }">
+                <div class="limit-tooltip" v-if="limitFlash['q' + (i+1)]">Character limit exceeded</div>
+                <textarea class="form-ta" v-model="form['q' + (i+1)]" placeholder="Your answer..." maxlength="500" @keydown="e => checkLimit(e, 'q' + (i+1), 500)"></textarea>
+              </div>
+              <div class="char-count" :class="{ warn: (form['q' + (i+1)] || '').length >= 480 }">{{ (form['q' + (i+1)] || '').length }}/500</div>
             </div>
           </div>
         </div>
@@ -1486,22 +1544,9 @@ export default {
             </div>
           </div>
 
-          <div v-if="errorMsg && !isSaving" class="profile-msg err" style="margin-top:8px">⚠️ {{ errorMsg }}</div>
+          <div v-if="errorMsg" class="profile-msg err" style="margin-top:8px">⚠️ {{ errorMsg }}</div>
         </div>
 
-        <div style="display:flex;gap:10px;margin-top:4px">
-          <button
-            class="btn btn-primary"
-            style="flex:1;justify-content:center;padding:13px"
-            :disabled="isSaving"
-            @click="saveProfile"
-          >
-            <span v-if="isSaving" class="btn-spinner"></span>
-            <span>{{ isSaving ? 'Saving...' : ((myProfile || form.firstName) ? 'Update Profile ✓' : 'Save Profile ✓') }}</span>
-          </button>
-        </div>
-        <div v-if="errorMsg"   class="profile-msg err" style="margin-top:10px">⚠️ {{ errorMsg }}</div>
-        <div v-if="successMsg" class="profile-msg ok"  style="margin-top:10px">{{ successMsg }}</div>
         <div style="margin-top:10px;text-align:center;font-size:12px;color:var(--text3)">
           All fields marked * are required to access Feed and Messages
         </div>
@@ -1586,6 +1631,24 @@ export default {
           </div>
         </div>
       </div>
+
+      <!-- ── Auto-save toast (bottom-right) ── -->
+      <Teleport to="body">
+        <div
+          v-if="autoSaveStatus !== 'idle'"
+          class="autosave-toast"
+          :class="autoSaveStatus"
+        >
+          <span v-if="autoSaveStatus === 'saving'" class="btn-spinner autosave-spinner"></span>
+          <span v-else-if="autoSaveStatus === 'saved'" class="autosave-icon">✓</span>
+          <span v-else-if="autoSaveStatus === 'error'" class="autosave-icon">⚠️</span>
+          <span class="autosave-text">
+            <template v-if="autoSaveStatus === 'saving'">Auto-saving...</template>
+            <template v-else-if="autoSaveStatus === 'saved'">Progress auto-saved!</template>
+            <template v-else-if="autoSaveStatus === 'error'">Auto-save failed</template>
+          </span>
+        </div>
+      </Teleport>
 
     </div>
   `,
