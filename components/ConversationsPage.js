@@ -41,7 +41,7 @@ export default {
     const myActor = computed(() => session.value?.actor ?? null);
 
     // ── Profile cache (localStorage) so names are instant on load ───────
-    const PROFILE_CACHE_KEY = 'hm_conv_profile_cache';
+    const PROFILE_CACHE_KEY = 'hm_conv_profile_cache_27';
     function loadProfileCache() {
       try { return JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || '{}'); }
       catch { return {}; }
@@ -189,40 +189,40 @@ export default {
     // Conversations the current user has archived (stored in localStorage)
     function getArchived() {
       try {
-        return new Set(JSON.parse(localStorage.getItem("hm_archived") || "[]"));
+        return new Set(JSON.parse(localStorage.getItem("hm_archived_27") || "[]"));
       } catch {
         return new Set();
       }
     }
     function saveArchived(s) {
-      localStorage.setItem("hm_archived", JSON.stringify([...s]));
+      localStorage.setItem("hm_archived_27", JSON.stringify([...s]));
     }
     function getFavorited() {
       try {
         return new Set(
-          JSON.parse(localStorage.getItem("hm_favorited") || "[]"),
+          JSON.parse(localStorage.getItem("hm_favorited_27") || "[]"),
         );
       } catch {
         return new Set();
       }
     }
     function saveFavorited(s) {
-      localStorage.setItem("hm_favorited", JSON.stringify([...s]));
+      localStorage.setItem("hm_favorited_27", JSON.stringify([...s]));
     }
     function getPinned() {
       try {
-        return new Set(JSON.parse(localStorage.getItem("hm_pinned") || "[]"));
+        return new Set(JSON.parse(localStorage.getItem("hm_pinned_27") || "[]"));
       } catch {
         return new Set();
       }
     }
     function savePinned(s) {
-      localStorage.setItem("hm_pinned", JSON.stringify([...s]));
+      localStorage.setItem("hm_pinned_27", JSON.stringify([...s]));
     }
     function getDeletedConversations() {
       try {
         return new Set(
-          JSON.parse(localStorage.getItem("hm_deleted_conversations") || "[]"),
+          JSON.parse(localStorage.getItem("hm_deleted_conversations_27") || "[]"),
         );
       } catch {
         return new Set();
@@ -232,7 +232,7 @@ export default {
       try {
         return new Set(
           JSON.parse(
-            localStorage.getItem("hm_deleted_channels_history") || "[]",
+            localStorage.getItem("hm_deleted_channels_history_27") || "[]",
           ),
         );
       } catch {
@@ -241,12 +241,12 @@ export default {
     }
     function saveDeletedChannelHistory(s) {
       localStorage.setItem(
-        "hm_deleted_channels_history",
+        "hm_deleted_channels_history_27",
         JSON.stringify([...s]),
       );
     }
     function saveDeletedConversations(s) {
-      localStorage.setItem("hm_deleted_conversations", JSON.stringify([...s]));
+      localStorage.setItem("hm_deleted_conversations_27", JSON.stringify([...s]));
       window.dispatchEvent(new CustomEvent("hm-deleted-conversations-updated"));
     }
 
@@ -502,7 +502,7 @@ export default {
     );
 
     // ── Message preview localStorage cache (survives refresh) ────────
-    const MSG_PREVIEW_CACHE_KEY = 'hm_msg_preview_cache';
+    const MSG_PREVIEW_CACHE_KEY = 'hm_msg_preview_cache_27';
     function loadMsgPreviewCache() {
       try { return JSON.parse(localStorage.getItem(MSG_PREVIEW_CACHE_KEY) || '{}'); }
       catch { return {}; }
@@ -675,14 +675,14 @@ export default {
     // Unread tracking (localStorage: { [channel]: lastReadTimestamp })
     function getLastRead() {
       try {
-        return JSON.parse(localStorage.getItem("hm_lastread") || "{}");
+        return JSON.parse(localStorage.getItem("hm_lastread_27") || "{}");
       } catch {
         return {};
       }
     }
     const lastRead = ref(getLastRead());
     function saveLastRead() {
-      localStorage.setItem("hm_lastread", JSON.stringify(lastRead.value));
+      localStorage.setItem("hm_lastread_27", JSON.stringify(lastRead.value));
     }
     function markRead(channel) {
       lastRead.value[channel] = Date.now();
@@ -890,7 +890,7 @@ export default {
       if (myActor.value) {
         try {
           await graffiti.post({
-            value: { activity: 'TeamDecline', from: myActor.value, to: invite.value.from, published: Date.now() },
+            value: { activity: 'TeamDecline27', from: myActor.value, to: invite.value.from, published: Date.now() },
             channels: [invite.value.from],
             allowed: [myActor.value, invite.value.from],
           }, session.value);
@@ -1014,7 +1014,7 @@ export default {
       isCreatingConv.value = true;
       const channel = crypto.randomUUID();
       const value = {
-        activity: "Create",
+        activity: "Create27",
         type: "Conversation",
         channel,
         participants,
@@ -1457,7 +1457,7 @@ export default {
         await graffiti.post(
           {
             value: {
-              activity: "Create",
+              activity: "Create27",
               type: "Conversation",
               channel: conv.value.channel,
               participants,
@@ -1485,7 +1485,7 @@ export default {
     }
 
     // ── Conversation sidebar localStorage cache ───────────────────────
-    const CONV_SIDEBAR_CACHE_KEY = 'hm_conv_sidebar_cache';
+    const CONV_SIDEBAR_CACHE_KEY = 'hm_conv_sidebar_cache_27';
     function loadConvSidebarCache() {
       try { return JSON.parse(localStorage.getItem(CONV_SIDEBAR_CACHE_KEY) || '[]'); }
       catch { return []; }
@@ -1514,7 +1514,7 @@ export default {
         .map(c => ({
           actor: null, url: null,
           channels: [c.channel],
-          value: { activity: 'Create', type: 'Conversation', channel: c.channel, participants: c.participants, participantKey: c.participantKey, pairKey: c.pairKey, published: c.published },
+          value: { activity: 'Create27', type: 'Conversation', channel: c.channel, participants: c.participants, participantKey: c.participantKey, pairKey: c.pairKey, published: c.published },
         }))
         .toSorted((a, b) => {
           const pinA = pinnedConversations.value.has(a.value.channel);

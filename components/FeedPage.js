@@ -28,7 +28,7 @@ export default {
     const graffiti = useGraffiti();
     const session = useGraffitiSession();
     // ── Feed profile cache (localStorage) — instant render on load ────
-    const FEED_PROFILE_CACHE_KEY = 'hm_feed_profiles';
+    const FEED_PROFILE_CACHE_KEY = 'hm_feed_profiles_27';
     function loadFeedProfileCache() {
       try { return JSON.parse(localStorage.getItem(FEED_PROFILE_CACHE_KEY) || '[]'); }
       catch { return []; }
@@ -70,7 +70,7 @@ export default {
     function getDeletedConversations() {
       try {
         return new Set(
-          JSON.parse(localStorage.getItem("hm_deleted_conversations") || "[]"),
+          JSON.parse(localStorage.getItem("hm_deleted_conversations_27") || "[]"),
         );
       } catch {
         return new Set();
@@ -80,7 +80,7 @@ export default {
       try {
         return new Set(
           JSON.parse(
-            localStorage.getItem("hm_deleted_channels_history") || "[]",
+            localStorage.getItem("hm_deleted_channels_history_27") || "[]",
           ),
         );
       } catch {
@@ -89,7 +89,7 @@ export default {
     }
     function saveDeletedChannelHistory(s) {
       localStorage.setItem(
-        "hm_deleted_channels_history",
+        "hm_deleted_channels_history_27",
         JSON.stringify([...s]),
       );
     }
@@ -403,7 +403,7 @@ export default {
     }
 
     function saveDeletedConversations(s) {
-      localStorage.setItem("hm_deleted_conversations", JSON.stringify([...s]));
+      localStorage.setItem("hm_deleted_conversations_27", JSON.stringify([...s]));
       deletedConversations.value = new Set(s);
       window.dispatchEvent(new CustomEvent("hm-deleted-conversations-updated"));
     }
@@ -467,7 +467,7 @@ export default {
         await graffiti.post(
           {
             value: {
-              activity: "Create",
+              activity: "Create27",
               type: "Conversation",
               channel,
               participants,

@@ -1,5 +1,5 @@
 // Shared channel for profile discovery
-export const HACKMATCH_CHANNEL = "hackmatch-26";
+export const HACKMATCH_CHANNEL = "hackmatch-27";
 
 export const TRACKS = [
   "Fintech",
@@ -15,7 +15,6 @@ export const FIELDS_OF_INTEREST = [
   "Hardware",
   "AR/VR",
   "Game Dev",
-  "Game Design",
   "Music",
   "HCI",
   "ML/AI",
@@ -278,7 +277,7 @@ export const TEAM_INVITE_SCHEMA = {
     value: {
       required: ["activity", "from", "to", "published"],
       properties: {
-        activity: { const: "TeamInvite" },
+        activity: { const: "TeamInvite27" },
         from: { type: "string" },
         to: { type: "string" },
         fromTeam: { type: "array" },
@@ -295,7 +294,7 @@ export const TEAM_DECLINE_SCHEMA = {
     value: {
       required: ["activity", "from", "to", "published"],
       properties: {
-        activity: { const: "TeamDecline" },
+        activity: { const: "TeamDecline27" },
         from: { type: "string" },
         to: { type: "string" },
         published: { type: "number" },
@@ -310,7 +309,7 @@ export const CONVERSATION_SCHEMA = {
     value: {
       required: ["activity", "type", "channel", "participants", "published"],
       properties: {
-        activity: { const: "Create" },
+        activity: { const: "Create27" },
         type: { const: "Conversation" },
         channel: { type: "string" },
         participants: { type: "array" },

@@ -157,7 +157,7 @@ export default {
           try {
             await graffiti.post({
               value: {
-                activity: 'TeamInvite',
+                activity: 'TeamInvite27',
                 from: myActorId,
                 to: mutualId,
                 autoConfirmedBy: personA, // signal: skip manual accept
@@ -217,7 +217,7 @@ export default {
       if (session.value?.actor) {
         try {
           await graffiti.post({
-            value: { activity: 'TeamDecline', from: session.value.actor, to: invite.value.from, published: Date.now() },
+            value: { activity: 'TeamDecline27', from: session.value.actor, to: invite.value.from, published: Date.now() },
             channels: [invite.value.from],
             allowed: [session.value.actor, invite.value.from],
           }, session.value);
@@ -451,7 +451,7 @@ export default {
             await graffiti.post(
               {
                 value: {
-                  activity: "TeamInvite",
+                  activity: "TeamInvite27",
                   from: myActorId,
                   to: targetActor,
                   fromTeam: fullTeam,
@@ -628,7 +628,7 @@ export default {
       if (session.value?.actor) {
         try {
           await graffiti.post({
-            value: { activity: 'TeamDecline', from: session.value.actor, to: actor, published: Date.now() },
+            value: { activity: 'TeamDecline27', from: session.value.actor, to: actor, published: Date.now() },
             channels: [actor],
             allowed: [session.value.actor, actor],
           }, session.value);
