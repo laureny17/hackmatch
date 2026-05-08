@@ -680,6 +680,7 @@ main {
 .qa-item {
   padding-left: 13px;
   border-left: 2.5px solid var(--primary-mid);
+  min-width: 0;
 }
 .qa-question {
   font-size: 10px;
@@ -700,6 +701,9 @@ main {
   color: var(--text2);
   font-style: italic;
   line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .qa-answer::before {
   content: "\201C";
