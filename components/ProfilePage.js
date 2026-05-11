@@ -163,7 +163,8 @@ export default {
                 autoConfirmedBy: personA, // signal: skip manual accept
                 published: Date.now(),
               },
-              channels: [mutualId],
+              channels: [myActorId, mutualId],
+              allowed: [myActorId, mutualId],
             }, session.value);
           } catch { /* non-critical */ }
         }
@@ -217,7 +218,7 @@ export default {
         try {
           await graffiti.post({
             value: { activity: 'TeamDecline27', from: session.value.actor, to: invite.value.from, published: Date.now() },
-            channels: [invite.value.from],
+            channels: [session.value.actor, invite.value.from],
             allowed: [session.value.actor, invite.value.from],
           }, session.value);
         } catch { /* non-critical */ }
@@ -456,7 +457,8 @@ export default {
                   fromTeam: fullTeam,
                   published: Date.now(),
                 },
-                channels: [targetActor],
+                channels: [myActorId, targetActor],
+                allowed: [myActorId, targetActor],
               },
               session.value,
             );
@@ -637,7 +639,7 @@ export default {
         try {
           await graffiti.post({
             value: { activity: 'TeamDecline27', from: session.value.actor, to: actor, published: Date.now() },
-            channels: [actor],
+            channels: [session.value.actor, actor],
             allowed: [session.value.actor, actor],
           }, session.value);
         } catch { /* non-critical */ }

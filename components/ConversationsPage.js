@@ -892,7 +892,7 @@ export default {
         try {
           await graffiti.post({
             value: { activity: 'TeamDecline27', from: myActor.value, to: invite.value.from, published: Date.now() },
-            channels: [invite.value.from],
+            channels: [myActor.value, invite.value.from],
             allowed: [myActor.value, invite.value.from],
           }, session.value);
         } catch { /* non-critical */ }
