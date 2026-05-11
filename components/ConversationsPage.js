@@ -59,14 +59,15 @@ export default {
       true,
     );
 
-    // Update localStorage cache whenever new profiles arrive
+    // Update localStorage cache whenever new profiles arrive (store full profile minus gallery)
     watch(profileObjects, (profiles) => {
       const next = { ...profileCache.value };
       let changed = false;
       for (const p of profiles) {
         const c = next[p.actor];
-        if (!c || p.value.published > c.published) {
-          next[p.actor] = { name: p.value.name, avatar: p.value.avatar, pronouns: p.value.pronouns, published: p.value.published };
+        if (!c || p.value.published > (c.published ?? 0)) {
+          const { gallery, ...rest } = p.value;
+          next[p.actor] = rest;
           changed = true;
         }
       }
@@ -75,14 +76,14 @@ export default {
 
     const profileByActor = computed(() => {
       const map = new Map();
-      // Seed from cache first so names are available before Graffiti responds
+      // Seed from full cache so profile cards have data before Graffiti responds
       for (const [actor, c] of Object.entries(profileCache.value)) {
-        map.set(actor, { actor, value: { name: c.name, avatar: c.avatar, pronouns: c.pronouns, published: c.published } });
+        map.set(actor, { actor, value: c });
       }
       // Real discovered data overwrites cache entries
       for (const p of profileObjects.value) {
         const existing = map.get(p.actor);
-        if (!existing || p.value.published > existing.value.published) {
+        if (!existing || p.value.published > (existing.value.published ?? 0)) {
           map.set(p.actor, p);
         }
       }
@@ -912,10 +913,19 @@ export default {
     // New conversation preview state (shows teammates before starting)
     const newConvPreview = ref(null); // { actor, message, excluded: Set<string> }
 
+    // Only truly mutual teammates (they also have us in their confirmedTeammates)
+    const mutualTeammateIds = computed(() => {
+      if (!myActor.value) return [];
+      return (myProfile.value?.value.confirmedTeammates ?? []).filter((id) => {
+        const their = profileByActor.value.get(id);
+        return (their?.value.confirmedTeammates ?? []).includes(myActor.value);
+      });
+    });
+
     const newConvPreviewTeammates = computed(() => {
       if (!newConvPreview.value) return [];
       const excluded = newConvPreview.value.excluded;
-      return (myProfile.value?.value.confirmedTeammates ?? [])
+      return mutualTeammateIds.value
         .filter((id) => !excluded.has(id))
         .map((id) => profileByActor.value.get(id))
         .filter(Boolean);
@@ -932,16 +942,14 @@ export default {
       if (!newConvPreview.value) return;
       const { actor, message, excluded } = newConvPreview.value;
       newConvPreview.value = null;
-      const teammates = (myProfile.value?.value.confirmedTeammates ?? []).filter(
-        (id) => !excluded.has(id),
-      );
+      const teammates = mutualTeammateIds.value.filter((id) => !excluded.has(id));
       await ensureConversationWith(actor, message, teammates);
     }
 
     function currentParticipantsWith(actorId, teammatesOverride = null) {
       const teammates = teammatesOverride !== null
         ? teammatesOverride
-        : (myProfile.value?.value.confirmedTeammates ?? []);
+        : mutualTeammateIds.value;
       return conversationParticipants(myActor.value, actorId, teammates);
     }
 
@@ -1059,7 +1067,7 @@ export default {
       async ([actorId, convsLoad, profsLoad]) => {
         if (!actorId) return;
         if (convsLoad || profsLoad) return; // wait for both to finish loading
-        const teammates = myProfile.value?.value.confirmedTeammates ?? [];
+        const teammates = mutualTeammateIds.value;
         if (teammates.length > 0) {
           // Show preview so user can see/remove teammates before starting
           newConvPreview.value = {
@@ -1309,7 +1317,11 @@ export default {
     }
 
     // ── Profile card modal ────────────────────────────────────────────
-    const profileModalTarget = ref(null);
+    // Store actor ID (not the profile object) so the card stays reactive as data loads
+    const profileModalTarget = ref(null); // actor ID string
+    const profileModalTargetProfile = computed(() =>
+      profileModalTarget.value ? (profileByActor.value.get(profileModalTarget.value) ?? null) : null
+    );
     const teamModalOpen = ref(false);
     const teamSearch = ref("");
     const teamDraft = ref([]);
@@ -1319,7 +1331,7 @@ export default {
     const addTeammateError = ref("");
 
     function openProfileModal(actor) {
-      profileModalTarget.value = profileByActor.value.get(actor) ?? null;
+      profileModalTarget.value = actor ?? null;
     }
 
     const teamDraftProfiles = computed(() =>
@@ -1568,6 +1580,7 @@ export default {
       pinnedConversations,
       togglePin,
       newConvPreview,
+      mutualTeammateIds,
       newConvPreviewTeammates,
       excludeFromNewConv,
       startNewConvPreview,
@@ -1623,6 +1636,7 @@ export default {
       myProfile,
       profileByActor,
       profileModalTarget,
+      profileModalTargetProfile,
       openProfileModal,
       teamModalOpen,
       teamSearch,
@@ -1757,6 +1771,7 @@ export default {
                     v-for="actor in convOtherActors(conv).slice(0, 3)"
                     :key="conv.value.channel + ':' + actor"
                     class="av-sm av-stack-item"
+                    :class="'status-ring-' + (actorProfile(actor)?.value.status ?? 'green')"
                     :style="actorAvatarStyle(actor)"
                   >
                     <span v-if="!actorProfile(actor)?.value.avatar">{{ actorInitials(actor) }}</span>
@@ -1862,7 +1877,11 @@ export default {
               />
             </div>
             <div>
-              <div class="msg-hdr-name">{{ convName(selectedConv) }}</div>
+              <div
+                class="msg-hdr-name"
+                :class="{ 'msg-hdr-name-clickable': (selectedConv?.value.participants?.length ?? 0) <= 2 }"
+                @click="(selectedConv?.value.participants?.length ?? 0) <= 2 && openProfileModal(convOtherActor(selectedConv))"
+              >{{ convName(selectedConv) }}</div>
               <div class="msg-hdr-sub" v-if="convOtherProfile(selectedConv)">
                 {{ convOtherProfile(selectedConv).value.school }} · {{ convOtherProfile(selectedConv).value.year }}
               </div>
@@ -2099,7 +2118,7 @@ export default {
             </div>
           </div>
 
-          <template v-if="(myProfile?.value.confirmedTeammates?.length ?? 0) > 0">
+          <template v-if="mutualTeammateIds.length > 0">
             <div class="team-note" style="margin:14px 0 8px">
               Your confirmed teammates will be added to this conversation:
             </div>
@@ -2289,11 +2308,12 @@ export default {
 
       <!-- ── Profile card modal ── -->
       <div v-if="profileModalTarget" class="overlay open" @click.self="profileModalTarget = null">
-        <div class="modal modal-lg" style="padding-top:14px">
-          <div style="display:flex;justify-content:flex-end;margin-bottom:4px">
-            <button class="modal-close" @click="profileModalTarget = null">✕</button>
+        <div class="profile-card-modal-wrap">
+          <button class="profile-card-x" @click="profileModalTarget = null">✕</button>
+          <div v-if="!profileModalTargetProfile" style="background:white;border-radius:var(--r-lg);padding:40px;text-align:center;color:var(--text3)">
+            Loading profile...
           </div>
-          <HackerCard :profile="profileModalTarget" :readOnly="true" />
+          <HackerCard v-else :profile="profileModalTargetProfile" :readOnly="true" />
         </div>
       </div>
 

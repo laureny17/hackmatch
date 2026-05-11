@@ -1637,8 +1637,8 @@ export default {
 
       <!-- ── Invite profile view modal ── -->
       <div v-if="inviteProfileModal" class="overlay open" @click.self="inviteProfileModal = null">
-        <div style="position:relative;max-width:560px;width:calc(100% - 32px);max-height:85vh;overflow-y:auto;border-radius:var(--r-lg)">
-          <button class="modal-close" style="position:absolute;top:12px;right:12px;z-index:1" @click="inviteProfileModal = null">✕</button>
+        <div class="profile-card-modal-wrap">
+          <button class="profile-card-x" @click="inviteProfileModal = null">✕</button>
           <HackerCard :profile="inviteProfileModal" :readOnly="true" />
         </div>
       </div>

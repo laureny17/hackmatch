@@ -557,6 +557,20 @@ main {
 .status-dot.red {
   background: var(--red);
 }
+
+/* Status ring around avatar */
+.status-ring-green {
+  outline: 2.5px solid var(--green);
+  outline-offset: 3px;
+}
+.status-ring-yellow {
+  outline: 2.5px solid var(--yellow);
+  outline-offset: 3px;
+}
+.status-ring-red {
+  outline: 2.5px solid var(--red);
+  outline-offset: 3px;
+}
 .card-info {
   flex: 1;
   min-width: 0;
@@ -592,6 +606,51 @@ main {
   font-size: 13px;
   color: var(--text2);
   margin-top: 2px;
+}
+.card-looking-for {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+  color: var(--green);
+}
+.card-looking-for.yellow {
+  color: var(--yellow);
+}
+.card-looking-for.red {
+  color: var(--red);
+}
+
+/* Profile card modal: card is the modal, no double wrapper */
+.profile-card-modal-wrap {
+  position: relative;
+  max-width: 560px;
+  width: calc(100% - 32px);
+  max-height: 85vh;
+  overflow-y: auto;
+  border-radius: var(--r-lg);
+}
+.profile-card-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text2);
+  line-height: 1;
+  backdrop-filter: blur(4px);
+}
+.profile-card-x:hover {
+  background: white;
+  color: var(--text);
 }
 
 /* Track tags */
@@ -1456,6 +1515,10 @@ main {
   margin-left: -10px;
   box-shadow: var(--shadow-sm);
 }
+.av-stack-item[class*="status-ring-"] {
+  outline-width: 2px;
+  outline-offset: 0;
+}
 .av-stack-item:first-child {
   margin-left: 0;
 }
@@ -1650,6 +1713,13 @@ main {
   font-family: "Outfit", sans-serif;
   font-size: 16px;
   font-weight: 700;
+}
+.msg-hdr-name-clickable {
+  cursor: pointer;
+}
+.msg-hdr-name-clickable:hover {
+  color: var(--primary);
+  text-decoration: underline;
 }
 .msg-hdr-sub {
   font-size: 11px;

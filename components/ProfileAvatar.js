@@ -18,7 +18,9 @@ export default {
       return !!this.avatarUrl && this.avatarUrl.startsWith("data:");
     },
     classes() {
-      return ["profile-avatar", "profile-avatar-" + this.size];
+      const base = ["profile-avatar", "profile-avatar-" + this.size];
+      if (this.showStatus) base.push("status-ring-" + this.status);
+      return base;
     },
     fallbackStyle() {
       return { background: this.gradient };
@@ -46,9 +48,6 @@ export default {
           <img v-if="media?.dataUrl" class="profile-avatar-img" :src="media.dataUrl" alt="">
         </graffiti-get-media>
         <span v-else>{{ initials }}</span>
-      </div>
-      <div v-if="showStatus" class="status-dot has-tt" :class="status">
-        <span class="tt">{{ statusLabel }}</span>
       </div>
     </div>
   `,

@@ -197,7 +197,7 @@ export default {
       return conversationParticipants(
         session.value?.actor,
         actorId,
-        myProfile.value?.value.confirmedTeammates ?? [],
+        mutualTeammateIds.value,
       );
     }
 
@@ -455,8 +455,7 @@ export default {
     async function sendFeedMessage(actorId, message, excludedTeammates = new Set()) {
       if (!session.value || !actorId || !message?.content?.trim()) return;
       const mine = session.value.actor;
-      const allTeammates = myProfile.value?.value.confirmedTeammates ?? [];
-      const filteredTeammates = allTeammates.filter(id => !excludedTeammates.has(id));
+      const filteredTeammates = mutualTeammateIds.value.filter(id => !excludedTeammates.has(id));
       const participants = conversationParticipants(mine, actorId, filteredTeammates);
       const pairKey = conversationPairKey(mine, actorId);
       const participantKey = conversationParticipantKey(participants);
@@ -583,10 +582,21 @@ export default {
       return map;
     });
 
+    // Only truly mutual teammates (they also have us in their confirmedTeammates)
+    const mutualTeammateIds = computed(() => {
+      const myActorId = session.value?.actor;
+      if (!myActorId) return [];
+      return (myProfile.value?.value.confirmedTeammates ?? []).filter((id) => {
+        const their = profileByActor.value.get(id);
+        return (their?.value.confirmedTeammates ?? []).includes(myActorId);
+      });
+    });
+
     return {
       session,
       isLoading,
       myProfile,
+      mutualTeammateIds,
       profileByActor,
       filteredProfiles,
       searchQuery,
@@ -756,13 +766,13 @@ export default {
           </div>
 
           <!-- Teammate visibility -->
-          <template v-if="(myProfile?.value.confirmedTeammates?.length ?? 0) > 0">
+          <template v-if="mutualTeammateIds.length > 0">
             <div class="team-note" style="margin:10px 0 8px">
               Your confirmed teammates will be added to this conversation. Click ✕ to exclude.
             </div>
             <div class="teammate-list" style="margin-bottom:10px">
               <div
-                v-for="id in (myProfile.value.confirmedTeammates ?? [])"
+                v-for="id in mutualTeammateIds"
                 :key="id"
                 class="teammate-row"
                 :style="msgExcluded.has(id) ? 'opacity:0.4' : ''"

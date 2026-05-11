@@ -54,7 +54,6 @@ export default {
           :gradient="grad"
           size="lg"
           :showStatus="true"
-          :statusLabel="statusLabel"
         />
         <div class="card-info">
           <div class="card-name-row">
@@ -63,6 +62,11 @@ export default {
             <span v-if="conversationStarted" class="conversation-badge">Conversation started</span>
           </div>
           <div class="card-meta">{{ v.major }} @ {{ v.school }} · {{ v.year }}</div>
+          <div v-if="v.status" class="card-looking-for" :class="v.status">
+            <template v-if="v.status === 'green'">Looking for {{ v.lookingForCount ?? '?' }} teammate{{ (v.lookingForCount ?? 2) !== 1 ? 's' : '' }}</template>
+            <template v-else-if="v.status === 'yellow'">Deciding on teammates</template>
+            <template v-else>Team is full</template>
+          </div>
         </div>
       </div>
 
