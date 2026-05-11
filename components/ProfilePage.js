@@ -164,7 +164,6 @@ export default {
                 published: Date.now(),
               },
               channels: [mutualId],
-              allowed: [myActorId, mutualId],
             }, session.value);
           } catch { /* non-critical */ }
         }
@@ -458,7 +457,6 @@ export default {
                   published: Date.now(),
                 },
                 channels: [targetActor],
-                allowed: [myActorId, targetActor],
               },
               session.value,
             );
