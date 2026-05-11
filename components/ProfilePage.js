@@ -27,7 +27,7 @@ const GALLERY_CROP_MAX_H = 260;
 export default {
   name: "ProfilePage",
   components: { ProfileAvatar, HackerCard },
-  emits: ["profile-saved"],
+  emits: ["profile-saved", "navigate"],
 
   setup(props, { emit }) {
     const graffiti = useGraffiti();
@@ -475,11 +475,21 @@ export default {
       }
     }
 
+    const wizardCompleteModal = ref(false);
+
+    async function finishWizard() {
+      if (validate().length === 0) {
+        await doSave();
+        wizardCompleteModal.value = true;
+      }
+    }
+
     // Debounced auto-save: triggers 1.5 s after last form change when form is valid.
-    // Skips when the form change was caused by hydration, not user input.
+    // Skips when the form change was caused by hydration or while in wizard mode.
     let autoSaveTimer = null;
     watch(form, () => {
       if (isHydrating) return;
+      if (wizardStep.value >= 0) return;
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => {
         if (validate().length === 0) doSave();
@@ -1016,6 +1026,8 @@ export default {
       wizardStep,
       isWizardMode,
       wizardCanAdvance,
+      wizardCompleteModal,
+      finishWizard,
       pendingInvites,
       isAcceptingInvite,
       inviteError,
@@ -1248,7 +1260,12 @@ export default {
                 :disabled="!wizardCanAdvance()"
                 @click="wizardStep++"
               >Next →</button>
-              <span v-else class="wizard-done-hint">Your profile will be saved automatically ✓</span>
+              <button
+                v-else
+                class="btn btn-primary"
+                :disabled="isSaving || !form.status"
+                @click="finishWizard"
+              >{{ isSaving ? 'Creating...' : 'Create Profile →' }}</button>
             </div>
           </div>
         </div>
@@ -1476,6 +1493,9 @@ export default {
             👥 Teammates
             <span style="font-size:12px;font-weight:400;color:var(--text3)">(up to 3 on your team)</span>
           </div>
+          <p style="font-size:13px;color:var(--text2);line-height:1.5;margin:0 0 14px">
+            Browse the <strong>Feed</strong> to find people you vibe with, message them to connect, then send a teammate request here once you're ready to lock in your team.
+          </p>
 
           <!-- 1. Mutually confirmed teammates -->
           <div v-if="mutualTeammates.length" class="teammate-subgroup">
@@ -1583,6 +1603,24 @@ export default {
         </div>
         </template> <!-- end full form -->
       </template>
+
+      <!-- ── Wizard complete popup ── -->
+      <Teleport to="body">
+        <div v-if="wizardCompleteModal" class="overlay open">
+          <div class="modal modal-sm wizard-complete-modal">
+            <div style="font-size:48px;text-align:center;margin-bottom:12px">🎉</div>
+            <div class="modal-title" style="text-align:center;margin-bottom:10px">You're all set!</div>
+            <p style="text-align:center;color:var(--text2);line-height:1.6;margin:0 0 20px">
+              Your profile is live. Head to the <strong>Feed</strong> to browse hackers, start conversations, and find your team.
+            </p>
+            <div class="modal-actions" style="justify-content:center">
+              <button class="btn btn-primary" @click="wizardCompleteModal = false; $emit('navigate', 'feed')">
+                Browse the Feed →
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- ── Avatar menu popup ── -->
       <div v-if="showAvatarMenu" class="modal-backdrop" @click.self="showAvatarMenu = false">

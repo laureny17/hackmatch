@@ -2942,6 +2942,16 @@ main {
   font-style: italic;
 }
 
+.wizard-complete-modal {
+  text-align: center;
+  padding: 32px 28px 28px;
+}
+
+.wizard-complete-modal .modal-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar {
   width: 5px;

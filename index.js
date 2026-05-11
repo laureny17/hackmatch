@@ -193,6 +193,7 @@ const App = {
         <ProfilePage
           v-if="routedPage === 'profile'"
           @profile-saved="navigate('feed')"
+          @navigate="navigate"
         />
       </template>
     </main>

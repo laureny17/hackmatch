@@ -1328,6 +1328,20 @@ export default {
         .filter(Boolean),
     );
 
+    const mutualTeammatesConv = computed(() => {
+      if (!myActor.value) return [];
+      return teamDraftProfiles.value.filter(p =>
+        (p.value.confirmedTeammates ?? []).includes(myActor.value)
+      );
+    });
+
+    const pendingOutgoingConv = computed(() => {
+      if (!myActor.value) return [];
+      return teamDraftProfiles.value.filter(p =>
+        !(p.value.confirmedTeammates ?? []).includes(myActor.value)
+      );
+    });
+
     const teamSearchResults = computed(() => {
       const q = teamSearch.value.trim().toLowerCase();
       if (!q || !myActor.value) return [];
@@ -1614,6 +1628,8 @@ export default {
       teamSearch,
       teamDraft,
       teamDraftProfiles,
+      mutualTeammatesConv,
+      pendingOutgoingConv,
       teamSearchResults,
       profileName,
       openTeamModal,
@@ -2121,33 +2137,36 @@ export default {
       <div v-if="teamModalOpen" class="overlay open" @click.self="teamModalOpen = false">
         <div class="modal modal-md">
           <div class="modal-hdr">
-            <div class="modal-title">Confirmed Teammates</div>
+            <div class="modal-title">👥 Your Team</div>
             <button class="modal-close" @click="teamModalOpen = false">✕</button>
           </div>
 
-          <div class="team-note">
-            New conversations you start will automatically include your confirmed teammates.
-            In older conversations, use the + button to optionally add confirmed teammates who are not already in that chat.
+          <div class="team-note" style="margin-bottom:14px">
+            Confirmed teammates are automatically added to new conversations you start.
           </div>
 
-          <div v-if="teamDraftProfiles.length" class="teammate-list">
-            <div v-for="p in teamDraftProfiles" :key="p.actor" class="teammate-row">
-              <div class="teammate-avatar" :style="actorAvatarStyle(p.actor)">
-                <span v-if="!p.value.avatar">{{ actorInitials(p.actor) }}</span>
+          <!-- 1. Confirmed teammates -->
+          <div v-if="mutualTeammatesConv.length" class="teammate-subgroup">
+            <div class="teammate-subgroup-title">✅ Confirmed</div>
+            <div class="teammate-list">
+              <div v-for="p in mutualTeammatesConv" :key="p.actor" class="teammate-row">
+                <div class="teammate-avatar" :style="actorAvatarStyle(p.actor)">
+                  <span v-if="!p.value.avatar">{{ actorInitials(p.actor) }}</span>
+                </div>
+                <div class="teammate-info">
+                  <div class="teammate-name">{{ profileName(p) }} <span v-if="p.value.pronouns">({{ p.value.pronouns }})</span></div>
+                  <div class="teammate-meta">{{ p.value.major }} @ {{ p.value.school }} · {{ p.value.year }}</div>
+                </div>
+                <button class="teammate-remove" @click="removeTeamDraft(p.actor)" title="Remove teammate">✕</button>
               </div>
-              <div class="teammate-info">
-                <div class="teammate-name">{{ profileName(p) }} <span v-if="p.value.pronouns">({{ p.value.pronouns }})</span></div>
-                <div class="teammate-meta">{{ p.value.major }} @ {{ p.value.school }} · {{ p.value.year }}</div>
-              </div>
-              <button class="teammate-remove" @click="removeTeamDraft(p.actor)" title="Remove teammate">✕</button>
             </div>
           </div>
 
-          <!-- Pending invite requests -->
-          <template v-if="pendingInvites.length">
-            <div class="team-note" style="margin:14px 0 6px;font-weight:700;color:var(--text)">📬 Invite Requests</div>
+          <!-- 2. Incoming invite requests -->
+          <div v-if="pendingInvites.length" class="teammate-subgroup">
+            <div class="teammate-subgroup-title">📬 Invite Requests</div>
             <div v-if="convInviteError" class="profile-msg err" style="margin-bottom:8px">⚠️ {{ convInviteError }}</div>
-            <div class="teammate-list" style="margin-bottom:8px">
+            <div class="teammate-list">
               <div v-for="inv in pendingInvites" :key="inv.url ?? inv.value.published" class="invite-row">
                 <div class="teammate-avatar" :style="actorAvatarStyle(inv.value.from)">
                   <span v-if="!actorProfile(inv.value.from)?.value.avatar">{{ actorInitials(inv.value.from) }}</span>
@@ -2158,19 +2177,46 @@ export default {
                     {{ actorProfile(inv.value.from)?.value.major ?? '' }}{{ actorProfile(inv.value.from)?.value.school ? ' @ ' + actorProfile(inv.value.from).value.school : '' }}
                   </div>
                 </div>
-                <div class="invite-actions" style="display:flex;gap:6px;flex-shrink:0">
+                <div class="invite-actions">
                   <button class="btn btn-primary btn-xs" :disabled="isAcceptingInvite" @click="acceptInviteInConv(inv)">Accept</button>
                   <button class="btn btn-ghost btn-xs" @click="declineInviteInConv(inv)">Decline</button>
                 </div>
               </div>
             </div>
-          </template>
+          </div>
 
+          <!-- 3. Outgoing pending (sent invites not yet accepted) -->
+          <div v-if="pendingOutgoingConv.length" class="teammate-subgroup">
+            <div class="teammate-subgroup-title">
+              ⏳ Pending
+              <span style="font-size:11px;font-weight:400;color:var(--text3)">
+                ({{ pendingOutgoingConv.length }} of {{ 3 - mutualTeammatesConv.length }} slots)
+              </span>
+            </div>
+            <div class="teammate-list">
+              <div v-for="p in pendingOutgoingConv" :key="p.actor" class="teammate-row">
+                <div class="teammate-avatar" :style="actorAvatarStyle(p.actor)">
+                  <span v-if="!p.value.avatar">{{ actorInitials(p.actor) }}</span>
+                </div>
+                <div class="teammate-info">
+                  <div class="teammate-name">{{ profileName(p) }} <span v-if="p.value.pronouns">({{ p.value.pronouns }})</span></div>
+                  <div class="teammate-meta">{{ p.value.major }} @ {{ p.value.school }} · {{ p.value.year }}</div>
+                </div>
+                <button class="teammate-remove" @click="removeTeamDraft(p.actor)" title="Cancel invite">✕</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!mutualTeammatesConv.length && !pendingInvites.length && !pendingOutgoingConv.length" class="empty-sub" style="margin:4px 0 12px">
+            No teammates yet. Head to the Feed to find people!
+          </div>
+
+          <!-- Search to add more -->
           <div v-if="teamDraft.length < 3" class="teammate-search">
             <input
               class="form-input"
               v-model="teamSearch"
-              placeholder="Search people by name..."
+              placeholder="Search people to invite..."
             >
             <div v-if="teamSearchResults.length" class="teammate-results">
               <button
