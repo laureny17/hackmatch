@@ -164,7 +164,6 @@ export default {
                 published: Date.now(),
               },
               channels: [myActorId, mutualId],
-              allowed: [myActorId, mutualId],
             }, session.value);
           } catch { /* non-critical */ }
         }
@@ -219,7 +218,6 @@ export default {
           await graffiti.post({
             value: { activity: 'TeamDecline27', from: session.value.actor, to: invite.value.from, published: Date.now() },
             channels: [session.value.actor, invite.value.from],
-            allowed: [session.value.actor, invite.value.from],
           }, session.value);
         } catch { /* non-critical */ }
       }
@@ -458,11 +456,10 @@ export default {
                   published: Date.now(),
                 },
                 channels: [myActorId, targetActor],
-                allowed: [myActorId, targetActor],
               },
               session.value,
             );
-          } catch { /* non-critical */ }
+          } catch (err) { console.warn('Invite post failed:', err); }
         }
         autoSaveStatus.value = 'saved';
         setTimeout(() => { if (autoSaveStatus.value === 'saved') autoSaveStatus.value = 'idle'; }, 2500);
@@ -640,7 +637,6 @@ export default {
           await graffiti.post({
             value: { activity: 'TeamDecline27', from: session.value.actor, to: actor, published: Date.now() },
             channels: [session.value.actor, actor],
-            allowed: [session.value.actor, actor],
           }, session.value);
         } catch { /* non-critical */ }
       }

@@ -893,7 +893,6 @@ export default {
           await graffiti.post({
             value: { activity: 'TeamDecline27', from: myActor.value, to: invite.value.from, published: Date.now() },
             channels: [myActor.value, invite.value.from],
-            allowed: [myActor.value, invite.value.from],
           }, session.value);
         } catch { /* non-critical */ }
       }
@@ -1427,19 +1426,40 @@ export default {
       isSavingTeam.value = true;
       teamError.value = "";
       try {
-        const v = myProfile.value.value;
-        await graffiti.delete(myProfile.value, session.value);
+        const oldProfile = myProfile.value;
+        const v = oldProfile.value;
+        const previousTeammates = new Set(v.confirmedTeammates ?? []);
+        const newTeammates = [...new Set(teamDraft.value)].slice(0, 3);
+        const myActorId = myActor.value;
+        // POST first so there's no null window
         await graffiti.post(
           {
-            value: {
-              ...v,
-              confirmedTeammates: [...new Set(teamDraft.value)].slice(0, 3),
-              published: Date.now(),
-            },
+            value: { ...v, confirmedTeammates: newTeammates, published: Date.now() },
             channels: [HACKMATCH_CHANNEL],
           },
           session.value,
         );
+        // Delete old profile in background
+        graffiti.delete(oldProfile, session.value).catch(() => {});
+        // Send invites to newly added teammates
+        for (const targetActor of newTeammates) {
+          if (previousTeammates.has(targetActor)) continue;
+          try {
+            await graffiti.post(
+              {
+                value: {
+                  activity: "TeamInvite27",
+                  from: myActorId,
+                  to: targetActor,
+                  fromTeam: [myActorId, ...newTeammates],
+                  published: Date.now(),
+                },
+                channels: [myActorId, targetActor],
+              },
+              session.value,
+            );
+          } catch (err) { console.warn('Invite post failed:', err); }
+        }
         teamModalOpen.value = false;
       } catch (err) {
         teamError.value = "Team update failed: " + (err?.message ?? err);
